@@ -1,1 +1,0 @@
-{"root":["./src/app.test.tsx","./src/app.tsx","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/layout.tsx","./src/components/ui.tsx","./src/data/scenario.ts","./src/screens/finalreport.tsx","./src/screens/liveroleplay.tsx","./src/screens/scenariobriefing.tsx","./src/screens/sessionhistory.tsx","./src/test/setup.ts"],"version":"5.9.3"}
