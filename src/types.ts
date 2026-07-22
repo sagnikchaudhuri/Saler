@@ -14,7 +14,9 @@ export type Speaker = 'seller' | 'customer' | 'system';
 export interface TranscriptTurn {
   id: string;
   speaker: Speaker;
-  text: string;
+  message: string;
+  /** The sales stage the conversation was in when this turn was recorded. */
+  stage: SalesStage;
   /** Epoch milliseconds when the turn was recorded. */
   timestamp: number;
 }

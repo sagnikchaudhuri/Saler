@@ -1,29 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
 import { SALES_SCENARIO, INITIAL_SCORES } from '../data/scenario';
 import { Card, ScoreBar, Badge, StatTile } from '../components/ui';
-import type { TranscriptTurn } from '../types';
-
-// Static placeholder transcript for the Phase 1 shell.
-// Real turns arrive from the conversation engine in Phase 2.
-const SAMPLE_TRANSCRIPT: TranscriptTurn[] = [
-  {
-    id: 't1',
-    speaker: 'customer',
-    text: "Hi, this is Rohan. I've got about ten minutes — what's this about?",
-    timestamp: 0,
-  },
-  {
-    id: 't2',
-    speaker: 'seller',
-    text: 'Thanks for making the time. Before I pitch anything — how do you currently ramp up your new reps?',
-    timestamp: 0,
-  },
-  {
-    id: 't3',
-    speaker: 'customer',
-    text: 'Mostly manager-led mock calls and reviewing recorded calls. It works, but it eats up manager time.',
-    timestamp: 0,
-  },
-];
+import type { TranscriptTurn, SalesStage } from '../types';
+import type { ConversationEngineState } from '../conversation/engine';
 
 const METRICS: { key: keyof typeof INITIAL_SCORES; label: string }[] = [
   { key: 'discovery', label: 'Discovery' },
@@ -34,13 +13,53 @@ const METRICS: { key: keyof typeof INITIAL_SCORES; label: string }[] = [
   { key: 'progression', label: 'Progression' },
 ];
 
-export function LiveRoleplay({ onEndCall }: { onEndCall: () => void }) {
+const STAGE_LABEL: Record<SalesStage, string> = {
+  opening: 'Opening',
+  discovery: 'Discovery',
+  impact: 'Impact',
+  value_mapping: 'Value Mapping',
+  objection_handling: 'Objection Handling',
+  next_step: 'Next Step',
+};
+
+export function LiveRoleplay({
+  state,
+  providerName,
+  onSubmit,
+  onRetry,
+  onEndCall,
+}: {
+  state: ConversationEngineState;
+  providerName: string;
+  onSubmit: (text: string) => void;
+  onRetry: () => void;
+  onEndCall: () => void;
+}) {
   const s = SALES_SCENARIO;
-  const overall = 47; // placeholder overall score for the shell
+  const [draft, setDraft] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const isBusy = state.status === 'GeneratingReply' || state.status === 'Evaluating';
+  const canSend = state.status === 'WaitingForSeller';
+
+  // Auto-scroll the transcript to the newest turn.
+  // (Guarded: jsdom/test environments don't implement Element.scrollTo.)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && typeof el.scrollTo === 'function') {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }, [state.transcript.length, isBusy]);
+
+  const send = () => {
+    if (!canSend) return;
+    onSubmit(draft);
+    setDraft('');
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header row: identity + call controls */}
+      {/* Header: identity + call controls */}
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-full bg-accent/15 text-lg text-accent-soft">
@@ -54,8 +73,8 @@ export function LiveRoleplay({ onEndCall }: { onEndCall: () => void }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Badge tone="good">● Live</Badge>
-          <span className="tabular-nums text-sm text-ink-300">02:14</span>
+          <CallStatus state={state} />
+          <CallTimer startedAt={state.startedAt} running={state.status !== 'Completed'} />
           <button type="button" className="btn-danger" onClick={onEndCall}>
             End Call
           </button>
@@ -63,82 +82,124 @@ export function LiveRoleplay({ onEndCall }: { onEndCall: () => void }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left / center: coaching + transcript */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Live coaching strip */}
+          {/* Live status strip */}
           <Card>
             <div className="grid gap-4 sm:grid-cols-3">
-              <StatTile label="Overall" value={overall} hint="live score" />
-              <StatTile label="Stage" value="Discovery" />
-              <StatTile label="Momentum" value="Stable" />
+              <StatTile label="Stage" value={STAGE_LABEL[state.stage]} />
+              <StatTile
+                label="Rapport"
+                value={state.memory.receptiveness}
+                hint="how warm Rohan is"
+              />
+              <StatTile label="Your turns" value={state.memory.sellerTurns} />
             </div>
-            <div className="mt-4 space-y-2">
-              <div className="rounded-lg border border-white/5 bg-navy-900/60 p-3 text-sm">
-                <span className="text-ink-400">Coaching: </span>
-                <span className="text-ink-100">
-                  Good open question — now dig into the cost of slow ramp-up.
-                </span>
-              </div>
-              <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 text-sm">
-                <span className="text-ink-400">Next move: </span>
-                <span className="text-ink-100">
-                  Ask how long a new rep takes to hit quota today.
-                </span>
-              </div>
-            </div>
+            <p className="mt-3 text-xs text-ink-400">
+              Live scoring, coaching, and next-move suggestions arrive in Phase 3.
+              Provider: <span className="text-ink-300">{providerName}</span>
+            </p>
           </Card>
 
           {/* Transcript */}
           <Card title="Transcript">
-            <div className="space-y-3">
-              {SAMPLE_TRANSCRIPT.map((turn) => (
+            <div ref={scrollRef} className="max-h-[46vh] space-y-3 overflow-y-auto pr-1">
+              {state.transcript.length === 0 && (
+                <p className="py-8 text-center text-sm text-ink-400">
+                  The call hasn’t started yet.
+                </p>
+              )}
+              {state.transcript.map((turn) => (
                 <TranscriptBubble key={turn.id} turn={turn} />
               ))}
+              {isBusy && <TypingBubble name={s.customer.name} />}
             </div>
 
-            {/* Input controls (non-functional in the Phase 1 shell) */}
-            <div className="mt-4 border-t border-white/5 pt-4">
-              <div className="flex items-center gap-2">
-                <button type="button" className="btn-ghost" disabled>
-                  🎙 Speak
-                </button>
-                <button type="button" className="btn-ghost" disabled>
-                  ⏹ Stop Speaking
+            {/* System error (provider failure / invalid response) */}
+            {state.status === 'Error' && (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-bad/30 bg-bad/10 p-3 text-sm">
+                <span className="text-bad">
+                  {state.error ?? 'Something went wrong.'}
+                </span>
+                <button type="button" className="btn-ghost" onClick={onRetry}>
+                  Retry
                 </button>
               </div>
-              <div className="mt-3 flex items-center gap-2">
+            )}
+
+            {/* Input controls */}
+            <div className="mt-4 border-t border-white/5 pt-4">
+              <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  disabled
-                  placeholder="Type your response… (enabled in Phase 2)"
-                  className="flex-1 rounded-lg border border-white/10 bg-navy-900/60 px-3 py-2 text-sm text-ink-200 placeholder:text-ink-400"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      send();
+                    }
+                  }}
+                  disabled={!canSend}
+                  aria-label="Your response"
+                  placeholder={
+                    canSend ? 'Type your response…' : 'Waiting for Rohan…'
+                  }
+                  className="flex-1 rounded-lg border border-white/10 bg-navy-900/60 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 disabled:opacity-60"
                 />
-                <button type="button" className="btn-primary" disabled>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={send}
+                  disabled={!canSend}
+                >
                   Send
                 </button>
               </div>
+              {state.inputError && (
+                <p className="mt-2 text-xs text-warn">{state.inputError}</p>
+              )}
+              <p className="mt-2 text-[11px] text-ink-400">
+                🎙 Voice input arrives in Phase 5 — typed responses for now.
+              </p>
             </div>
           </Card>
         </div>
 
-        {/* Right rail: metric breakdown */}
+        {/* Right rail: metric breakdown (static until Phase 3) */}
         <div className="space-y-6">
-          <Card title="Metric Breakdown">
-            <div className="space-y-3">
+          <Card
+            title="Metric Breakdown"
+            action={<Badge>Phase 3</Badge>}
+          >
+            <div className="space-y-3 opacity-70">
               {METRICS.map((m) => (
-                <ScoreBar
-                  key={m.key}
-                  label={m.label}
-                  value={INITIAL_SCORES[m.key]}
-                />
+                <ScoreBar key={m.key} label={m.label} value={INITIAL_SCORES[m.key]} />
               ))}
             </div>
+            <p className="mt-3 text-[11px] text-ink-400">
+              These become live, explainable scores in Phase 3.
+            </p>
           </Card>
 
-          <Card title="Score Progression">
-            <div className="grid h-28 place-items-center rounded-lg border border-dashed border-white/10 text-xs text-ink-400">
-              Live chart appears in Phase 3
-            </div>
+          <Card title="Objections Raised">
+            {state.objectionsRaised.length === 0 ? (
+              <p className="text-sm text-ink-400">None yet.</p>
+            ) : (
+              <ul className="space-y-2 text-sm">
+                {state.objectionsRaised.map((key) => (
+                  <li key={key} className="flex items-center justify-between gap-2">
+                    <span className="text-ink-200 capitalize">
+                      {key.replace(/_/g, ' ')}
+                    </span>
+                    {state.memory.addressedObjections.includes(key) ? (
+                      <Badge tone="good">Addressed</Badge>
+                    ) : (
+                      <Badge tone="warn">Open</Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         </div>
       </div>
@@ -146,10 +207,34 @@ export function LiveRoleplay({ onEndCall }: { onEndCall: () => void }) {
   );
 }
 
+function CallStatus({ state }: { state: ConversationEngineState }) {
+  if (state.status === 'Completed') return <Badge>Ended</Badge>;
+  if (state.status === 'Error') return <Badge tone="bad">Error</Badge>;
+  if (state.status === 'GeneratingReply' || state.status === 'Evaluating')
+    return <Badge tone="accent">Rohan is replying…</Badge>;
+  if (state.status === 'Idle') return <Badge>Not started</Badge>;
+  return <Badge tone="good">● Live</Badge>;
+}
+
+function CallTimer({ startedAt, running }: { startedAt: number | null; running: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running || startedAt === null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [running, startedAt]);
+
+  if (startedAt === null) return <span className="tabular-nums text-sm text-ink-400">00:00</span>;
+  const secs = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+  const ss = String(secs % 60).padStart(2, '0');
+  return <span className="tabular-nums text-sm text-ink-300">{mm}:{ss}</span>;
+}
+
 function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
   const isSeller = turn.speaker === 'seller';
   return (
-    <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'} animate-fade-in`}>
       <div
         className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
           isSeller
@@ -160,7 +245,24 @@ function TranscriptBubble({ turn }: { turn: TranscriptTurn }) {
         <div className="mb-0.5 text-[11px] uppercase tracking-wide text-ink-400">
           {isSeller ? 'You' : SALES_SCENARIO.customer.name}
         </div>
-        {turn.text}
+        {turn.message}
+      </div>
+    </div>
+  );
+}
+
+function TypingBubble({ name }: { name: string }) {
+  return (
+    <div className="flex justify-start">
+      <div className="rounded-2xl rounded-bl-sm bg-white/5 px-4 py-2 text-sm text-ink-300">
+        <div className="mb-0.5 text-[11px] uppercase tracking-wide text-ink-400">
+          {name}
+        </div>
+        <span className="inline-flex gap-1" aria-label="typing">
+          <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-ink-300" />
+          <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-ink-300 [animation-delay:200ms]" />
+          <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-ink-300 [animation-delay:400ms]" />
+        </span>
       </div>
     </div>
   );

@@ -24,13 +24,18 @@
 - [x] Checks: typecheck ✅ · lint ✅ · tests ✅ (3/3) · build ✅ · 0 vulnerabilities
 - [x] Visual smoke check in browser (renders correctly)
 
-## Phase 2 — Typed roleplay & Demo Mode  `[ ]`
-- [ ] Conversation engine (turn manager, state)
-- [ ] AI customer persona module (Rohan Mehta) — separate from evaluator
-- [ ] Scripted Demo Mode customer responses (deterministic)
-- [ ] Typed input + transcript rendering
-- [ ] Provider-agnostic LLM interface (server route stub)
-- [ ] Checks + commit
+## Phase 2 — Typed roleplay & Demo Mode  `[x]`
+- [x] ConversationProvider abstraction (Demo + LLM, identical interface)
+- [x] LLMConversationProvider disabled until API config exists
+- [x] Conversation engine: transcript, memory, stage, objections, state
+- [x] State machine: Idle · GeneratingReply · WaitingForSeller · Evaluating · Completed · Error
+- [x] AI customer persona module (Rohan Mehta) — separate, deterministic, non-repeating
+- [x] Typed input + transcript rendering + loading indicator + stage updates
+- [x] End Call → deterministic placeholder report (replaced by real evaluator in Phase 4)
+- [x] Error handling: empty input, provider failure, invalid response, unavailable provider
+- [x] Tests (37 total): engine, transitions, transcript, provider switching, demo provider, End Call
+- [x] Checks: typecheck ✅ · lint ✅ · tests ✅ (37/37) · build ✅
+- [x] Verified interactive flow in browser (discovery → objection → report)
 
 ## Phase 3 — Real-time evaluator & deterministic scoring  `[ ]`
 - [ ] Evaluator module returns structured signals (separate from customer)
