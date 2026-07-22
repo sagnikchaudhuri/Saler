@@ -62,34 +62,41 @@ function clamp(n: number): number {
 
 /** Build a deterministic placeholder report from the final conversation state. */
 export function buildDemoReport(state: ConversationEngineState): DemoReport {
-  const { memory, objectionsRaised, stage, agreedToNextStep, transcript } = state;
+  const { memory, objectionsRaised, stage, agreedToNextStep, transcript, scoreState } = state;
   const sellerTurns = transcript.filter((t) => t.speaker === 'seller');
 
   const handledCount = memory.addressedObjections.length;
   const raisedCount = objectionsRaised.length;
 
-  // Deterministic placeholder scoring driven by observable facts.
-  const overallFinal = clamp(
-    30 +
-      memory.receptiveness * 0.4 +
-      handledCount * 6 +
-      (memory.askedAboutProcess ? 5 : 0) +
-      (memory.quantifiedValue ? 6 : 0) +
-      (agreedToNextStep ? 8 : 0),
-  );
-  const liveAverage = clamp(overallFinal - 6);
-  const transcriptEval = clamp(overallFinal + 4);
+  // Prefer REAL live-scoring history (Phase 3). The transcript-eval number
+  // remains a placeholder until the Phase 4 final evaluator. If no turns were
+  // scored yet, fall back to observable-fact heuristics.
+  const history = scoreState.history;
+  const hasScores = history.length > 0;
 
-  const categoryScores: Scores = {
-    discovery: clamp(INITIAL_SCORES.discovery + (memory.askedAboutProcess ? 15 : 0)),
-    relevance: clamp(INITIAL_SCORES.relevance + memory.facts.length * 4),
-    clarity: clamp(INITIAL_SCORES.clarity + (memory.receptiveness - 30) * 0.3),
-    listening: clamp(INITIAL_SCORES.listening + memory.facts.length * 3),
-    objectionHandling: clamp(
-      INITIAL_SCORES.objectionHandling + handledCount * 12 - (raisedCount - handledCount) * 4,
-    ),
-    progression: clamp(INITIAL_SCORES.progression + STAGE_RANK[stage] * 6),
-  };
+  const liveAverage = hasScores
+    ? clamp(history.reduce((sum, h) => sum + h.visibleOverall, 0) / history.length)
+    : clamp(45 + memory.receptiveness * 0.2);
+
+  const finalVisible = hasScores
+    ? history[history.length - 1].visibleOverall
+    : liveAverage;
+
+  const transcriptEval = clamp(finalVisible + 4); // placeholder until Phase 4
+  const overallFinal = clamp((finalVisible + transcriptEval) / 2);
+
+  const categoryScores: Scores = hasScores
+    ? history[history.length - 1].updatedMetrics
+    : {
+        discovery: clamp(INITIAL_SCORES.discovery + (memory.askedAboutProcess ? 15 : 0)),
+        relevance: clamp(INITIAL_SCORES.relevance + memory.facts.length * 4),
+        clarity: clamp(INITIAL_SCORES.clarity + (memory.receptiveness - 30) * 0.3),
+        listening: clamp(INITIAL_SCORES.listening + memory.facts.length * 3),
+        objectionHandling: clamp(
+          INITIAL_SCORES.objectionHandling + handledCount * 12 - (raisedCount - handledCount) * 4,
+        ),
+        progression: clamp(INITIAL_SCORES.progression + STAGE_RANK[stage] * 6),
+      };
 
   // Strengths / misses — deterministic from what actually happened.
   const strengths: string[] = [];

@@ -1,4 +1,4 @@
-import type { SalesStage, TranscriptTurn, Speaker } from '../types';
+import type { EvaluatorResult, SalesStage, TranscriptTurn, Speaker } from '../types';
 import type {
   ConversationContext,
   ConversationProvider,
@@ -10,6 +10,11 @@ import type {
 import { createInitialMemory } from './types';
 import { updateCustomerMemory } from './persona';
 import { InvalidProviderResponseError } from './errors';
+import type { EvaluationContext, RealTimeEvaluatorProvider } from '../evaluation/types';
+import { DemoRealTimeEvaluatorProvider } from '../evaluation/DemoRealTimeEvaluatorProvider';
+import { validateEvaluatorResult, safeFallbackResult } from '../evaluation/validate';
+import type { ScoreState } from '../scoring/types';
+import { createInitialScoreState, applyEvaluation } from '../scoring/session';
 
 /** Maximum characters accepted from the seller in one turn. */
 export const MAX_INPUT_LENGTH = 1000;
@@ -30,6 +35,10 @@ export interface ConversationEngineState {
   startedAt: number | null;
   endedAt: number | null;
   demoMode: boolean;
+  /** Live scoring state (metrics, visible overall, momentum, history). */
+  scoreState: ScoreState;
+  /** Non-blocking warning shown when the evaluator fell back for a turn. */
+  evaluatorWarning: string | null;
 }
 
 export interface EngineOptions {
@@ -50,13 +59,26 @@ function safeErrorMessage(err: unknown): string {
 /**
  * The Conversation Engine.
  *
- * Owns the transcript, customer memory, current stage, and objections raised,
- * and drives the state machine:
+ * Owns the transcript, customer memory, current stage, objections raised, and
+ * live scoring state, and drives the state machine:
  *
  *   Idle → (start) → WaitingForSeller
- *   WaitingForSeller → (submit) → GeneratingReply → Evaluating → WaitingForSeller
+ *   WaitingForSeller → (submit) → Evaluating → GeneratingReply → WaitingForSeller
  *   any → (endCall) → Completed
- *   GeneratingReply → (failure) → Error → (retry) → WaitingForSeller
+ *   GeneratingReply → (customer failure) → Error → (retry) → WaitingForSeller
+ *
+ * EXECUTION ORDER — evaluation runs SEQUENTIALLY before customer generation.
+ * Rationale: the evaluator only needs the seller's turn + prior context (not
+ * the new customer reply), and running it first guarantees the score reflects
+ * the exact pre-reply state. Sequential ordering avoids races on shared state
+ * and is trivial to reason about; both steps are local and fast. (With a
+ * remote LLM this could be parallelised, since the evaluator's input doesn't
+ * depend on the customer reply — but we keep it sequential for consistency.)
+ *
+ * SEPARATION — evaluator output is NEVER passed into the customer persona.
+ * The persona receives only the transcript/context it legitimately needs; the
+ * evaluator receives the seller message + latest customer statement. This is
+ * why the AI customer can't be "coached" by the scorer.
  *
  * It is framework-agnostic; the React hook simply subscribes to it.
  */
@@ -64,13 +86,16 @@ export class ConversationEngine {
   private state: ConversationEngineState;
   private readonly listeners = new Set<Listener>();
   private readonly now: () => number;
+  private readonly evaluator: RealTimeEvaluatorProvider;
   private idCounter = 0;
 
   constructor(
     private readonly provider: ConversationProvider,
     private readonly options: EngineOptions,
+    evaluator?: RealTimeEvaluatorProvider,
   ) {
     this.now = options.now ?? Date.now;
+    this.evaluator = evaluator ?? new DemoRealTimeEvaluatorProvider();
     this.state = {
       status: 'Idle',
       transcript: [],
@@ -83,6 +108,8 @@ export class ConversationEngine {
       startedAt: null,
       endedAt: null,
       demoMode: options.demoMode,
+      scoreState: createInitialScoreState(),
+      evaluatorWarning: null,
     };
   }
 
@@ -92,6 +119,10 @@ export class ConversationEngine {
 
   getProviderName(): string {
     return this.provider.getName();
+  }
+
+  getEvaluatorName(): string {
+    return this.evaluator.getName();
   }
 
   subscribe(listener: Listener): () => void {
@@ -153,18 +184,27 @@ export class ConversationEngine {
       return;
     }
 
-    // Append the seller's turn and move to GeneratingReply.
+    // Append the seller's turn. The stage recorded is the stage the seller
+    // was operating in when they spoke.
     const sellerTurn = this.makeTurn('seller', text, this.state.stage);
+    const priorTranscript = this.state.transcript;
     this.setState({
-      status: 'GeneratingReply',
+      status: 'Evaluating',
       inputError: null,
       error: null,
-      transcript: [...this.state.transcript, sellerTurn],
+      evaluatorWarning: null,
+      transcript: [...priorTranscript, sellerTurn],
     });
 
-    // Build the context snapshot the provider needs.
+    // --- 1) EVALUATE (must never block the call) ---
+    await this.evaluateAndScore(text, priorTranscript);
+
+    // --- 2) GENERATE the customer reply ---
+    this.setState({ status: 'GeneratingReply' });
     const ctx: ConversationContext = {
       scenarioId: this.options.scenarioId,
+      // Persona sees the transcript BEFORE this reply, its own memory, stage,
+      // and objections — but never the evaluator's signals or feedback.
       transcript: this.state.transcript,
       memory: this.state.memory,
       stage: this.state.stage,
@@ -180,7 +220,6 @@ export class ConversationEngine {
       return;
     }
 
-    // Validate the provider response before trusting it.
     if (!reply || typeof reply.message !== 'string' || reply.message.trim() === '') {
       this.setState({
         status: 'Error',
@@ -189,11 +228,61 @@ export class ConversationEngine {
       return;
     }
 
-    // Evaluating: the engine applies memory/stage/objection updates. (In a
-    // later phase this is where the real evaluator runs.)
-    this.setState({ status: 'Evaluating' });
     this.applyReply(text, reply);
     this.setState({ status: 'WaitingForSeller' });
+  }
+
+  /**
+   * Run the evaluator on the seller's turn and fold the result into the score
+   * state. Any failure or invalid response falls back to a safe, no-op result
+   * plus a non-blocking warning — the roleplay always continues.
+   */
+  private async evaluateAndScore(
+    sellerMessage: string,
+    priorTranscript: TranscriptTurn[],
+  ): Promise<void> {
+    const latestCustomerStatement =
+      [...priorTranscript].reverse().find((t) => t.speaker === 'customer')?.message ?? null;
+    const previousSellerMessages = priorTranscript
+      .filter((t) => t.speaker === 'seller')
+      .map((t) => t.message);
+
+    const evalCtx: EvaluationContext = {
+      sellerMessage,
+      latestCustomerStatement,
+      transcript: this.state.transcript,
+      stage: this.state.stage,
+      objectionsRaised: this.state.objectionsRaised,
+      previousSellerMessages,
+    };
+
+    let result: EvaluatorResult;
+    let warning: string | null = null;
+    try {
+      const raw = await this.evaluator.evaluate(evalCtx);
+      const validated = validateEvaluatorResult(raw);
+      if (validated.ok && validated.value) {
+        result = validated.value;
+      } else {
+        result = safeFallbackResult(this.state.stage);
+        warning = 'The evaluator returned an invalid response; scoring was skipped for this turn.';
+      }
+    } catch {
+      result = safeFallbackResult(this.state.stage);
+      warning = 'Evaluation is temporarily unavailable; scoring was skipped for this turn.';
+    }
+
+    const sellerTurnNumber = previousSellerMessages.length + 1;
+    const scoreState = applyEvaluation(this.state.scoreState, result, {
+      sellerTurn: sellerTurnNumber,
+      timestamp: this.now(),
+      stage: this.state.stage,
+      // Objection weighting activates once an objection has been raised in a
+      // prior customer turn (tracked independently of the evaluator).
+      objectionActive: this.state.objectionsRaised.length > 0,
+    });
+
+    this.setState({ scoreState, evaluatorWarning: warning });
   }
 
   private applyReply(sellerMessage: string, reply: ProviderReply): void {

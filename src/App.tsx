@@ -49,7 +49,7 @@ export default function App() {
       {screen === 'roleplay' && (
         <LiveRoleplay
           state={convo.state}
-          providerName={convo.providerName}
+          evaluatorName={convo.evaluatorName}
           onSubmit={convo.submit}
           onRetry={convo.retry}
           onEndCall={handleEndCall}

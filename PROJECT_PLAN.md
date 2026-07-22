@@ -37,14 +37,44 @@
 - [x] Checks: typecheck ✅ · lint ✅ · tests ✅ (37/37) · build ✅
 - [x] Verified interactive flow in browser (discovery → objection → report)
 
-## Phase 3 — Real-time evaluator & deterministic scoring  `[ ]`
-- [ ] Evaluator module returns structured signals (separate from customer)
-- [ ] Deterministic signal → score-change functions
-- [ ] Clamp / smooth / per-turn cap / objection activation / weighting
-- [ ] Momentum from score history
-- [ ] Live UI: score, momentum, stage, feedback, next move, chart
-- [ ] Unit tests for scoring
-- [ ] Checks + commit
+## Phase 3 — Real-time evaluator & deterministic scoring  `[x]`
+- [x] RealTimeEvaluatorProvider abstraction (Demo + LLM, identical interface)
+- [x] LLM evaluator disabled until a secure endpoint exists
+- [x] Deterministic signal detection (keywords, structure, context, length, repetition)
+- [x] Strict runtime validation + safe fallback + non-blocking warning
+- [x] Pure scoring engine: signal→score functions, clamp, immutable, reason log
+- [x] Diminishing repeated rewards; penalties always apply
+- [x] Pre/post-objection weighting; objection handling excluded until an objection
+- [x] Smoothed visible score with ≤8-point/turn movement cap
+- [x] Momentum from visible-score history (documented rule)
+- [x] Score history entry written every seller turn
+- [x] Engine flow: WaitingForSeller → Evaluating → GeneratingReply → WaitingForSeller
+- [x] Live UI: overall, stage, momentum, feedback, next move, collapsible metrics, SVG trend, warning
+- [x] Tests (106 total): evaluator, scoring, momentum, integration, UI
+- [x] Checks: typecheck ✅ · lint ✅ · tests ✅ (106) · build ✅
+- [x] Browser-verified all 11 steps (discovery↑, pitch penalty, objection activation, report)
+
+### Architecture note — real-time scoring (Phase 3)
+- **Signals, not scores.** The evaluator returns *behavioural signals* (booleans)
+  + hints, never persistent metric values. An LLM must never write scores
+  directly, or scoring becomes an opaque, unrepeatable black box.
+- **Deterministic scoring.** Pure TS functions convert signals → metric deltas.
+  Same signals ⇒ same numbers, so every score is explainable and unit-testable.
+- **Conditional objection weighting.** Objection Handling isn't a real skill to
+  assess until Rohan raises an objection, so it's excluded from the overall
+  (and shown "Not yet assessed") pre-objection, then included post-objection
+  with a re-normalised weight set (both weight sets sum to 1.0).
+- **Smoothing + movement cap.** The visible overall moves toward the raw
+  weighted score but never more than ±8 points/turn, preventing jarring jumps.
+- **Repeated-reward control.** Diminishing returns per signal (full, ½, ¼, then
+  0) stops "farming" the same achievement; penalties are never diminished.
+- **Failure handling.** If the evaluator throws or returns an invalid shape, the
+  engine substitutes a safe no-op result, shows a non-blocking warning, still
+  writes a history entry, and the roleplay continues — evaluation never ends
+  the call.
+- **Execution order.** Evaluation runs *sequentially before* customer
+  generation: the evaluator scores the exact pre-reply state, avoiding races.
+  Evaluator output is never fed to the customer persona (no coaching leak).
 
 ## Phase 4 — Final report & session history  `[ ]`
 - [ ] Transcript evaluator (final pass)

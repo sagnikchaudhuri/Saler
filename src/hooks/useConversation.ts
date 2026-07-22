@@ -2,19 +2,28 @@ import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 're
 import { SALES_SCENARIO } from '../data/scenario';
 import { ConversationEngine, type ConversationEngineState } from '../conversation/engine';
 import { createConversationProvider, type CreateProviderConfig } from '../conversation/provider';
+import { createEvaluatorProvider } from '../evaluation/provider';
 import { buildDemoReport, type DemoReport } from '../conversation/report';
 
 function createEngine(config: CreateProviderConfig): ConversationEngine {
   const { provider, demoMode } = createConversationProvider(config);
-  return new ConversationEngine(provider, {
-    scenarioId: SALES_SCENARIO.id,
-    demoMode,
+  // The evaluator is chosen independently of the conversation provider, but in
+  // Phase 3 both fall back to their deterministic Demo implementations.
+  const { provider: evaluator } = createEvaluatorProvider({
+    llmEnabled: config.llmEnabled,
+    llmEndpoint: config.llmEndpoint,
   });
+  return new ConversationEngine(
+    provider,
+    { scenarioId: SALES_SCENARIO.id, demoMode },
+    evaluator,
+  );
 }
 
 export interface UseConversation {
   state: ConversationEngineState;
   providerName: string;
+  evaluatorName: string;
   report: DemoReport | null;
   start: () => void;
   submit: (text: string) => void;
@@ -61,6 +70,7 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
   return {
     state,
     providerName: engine.getProviderName(),
+    evaluatorName: engine.getEvaluatorName(),
     report,
     start,
     submit,
