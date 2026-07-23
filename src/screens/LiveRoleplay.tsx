@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { SALES_SCENARIO } from '../data/scenario';
 import { Card, ScoreBar, Badge, StatTile } from '../components/ui';
 import { ScoreTrend } from '../components/ScoreTrend';
+import { SellerInput } from '../components/SellerInput';
+import type { SpeechRecognitionProvider } from '../speech/types';
 import type { TranscriptTurn, SalesStage, Scores, Momentum } from '../types';
 import type { ConversationEngineState } from '../conversation/engine';
 
@@ -36,15 +38,17 @@ export function LiveRoleplay({
   onSubmit,
   onRetry,
   onEndCall,
+  speechProvider,
 }: {
   state: ConversationEngineState;
   evaluatorName: string;
   onSubmit: (text: string) => void;
   onRetry: () => void;
   onEndCall: () => void;
+  /** Injectable speech provider (tests); defaults to the browser provider. */
+  speechProvider?: SpeechRecognitionProvider;
 }) {
   const s = SALES_SCENARIO;
-  const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isBusy = state.status === 'GeneratingReply' || state.status === 'Evaluating';
@@ -64,12 +68,6 @@ export function LiveRoleplay({
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
   }, [state.transcript.length, isBusy]);
-
-  const send = () => {
-    if (!canSend) return;
-    onSubmit(draft);
-    setDraft('');
-  };
 
   return (
     <div className="space-y-6">
@@ -147,7 +145,12 @@ export function LiveRoleplay({
 
           {/* Transcript */}
           <Card title="Transcript">
-            <div ref={scrollRef} className="max-h-[42vh] space-y-3 overflow-y-auto pr-1">
+            <div
+              ref={scrollRef}
+              role="log"
+              aria-label="Conversation transcript"
+              className="max-h-[42vh] space-y-3 overflow-y-auto pr-1"
+            >
               {state.transcript.length === 0 && (
                 <p className="py-8 text-center text-sm text-ink-400">
                   The call hasn’t started yet.
@@ -168,32 +171,12 @@ export function LiveRoleplay({
               </div>
             )}
 
-            <div className="mt-4 border-t border-white/5 pt-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
-                  disabled={!canSend}
-                  aria-label="Your response"
-                  placeholder={canSend ? 'Type your response…' : 'Waiting for Rohan…'}
-                  className="flex-1 rounded-lg border border-white/10 bg-navy-900/60 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 disabled:opacity-60"
-                />
-                <button type="button" className="btn-primary" onClick={send} disabled={!canSend}>
-                  Send
-                </button>
-              </div>
-              {state.inputError && <p className="mt-2 text-xs text-warn">{state.inputError}</p>}
-              <p className="mt-2 text-[11px] text-ink-400">
-                🎙 Voice input arrives in Phase 5 — typed responses for now.
-              </p>
-            </div>
+            <SellerInput
+              canSend={canSend}
+              inputError={state.inputError}
+              onSubmit={onSubmit}
+              speechProvider={speechProvider}
+            />
           </Card>
         </div>
 

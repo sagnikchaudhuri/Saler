@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, within, fireEvent, act } from '@testing-library/react';
+import { MockSpeechRecognitionProvider } from '../speech/MockSpeechRecognitionProvider';
 import { LiveRoleplay } from './LiveRoleplay';
 import { ConversationEngine, type ConversationEngineState } from '../conversation/engine';
 import { DemoConversationProvider } from '../conversation/DemoConversationProvider';
@@ -37,6 +38,89 @@ function renderLive(state: ConversationEngineState) {
     />,
   );
 }
+
+describe('LiveRoleplay — speech input integration', () => {
+  function renderWithSpeech(state: ConversationEngineState, supported = true) {
+    const provider = new MockSpeechRecognitionProvider({ supported });
+    const onSubmit = vi.fn();
+    render(
+      <LiveRoleplay
+        state={state}
+        evaluatorName="Demo evaluator"
+        onSubmit={onSubmit}
+        onRetry={() => {}}
+        onEndCall={() => {}}
+        speechProvider={provider}
+      />,
+    );
+    return { provider, onSubmit };
+  }
+
+  it('routes recognised text through the same submitSeller path as typing', async () => {
+    const state = await runEngine([]);
+    const { provider, onSubmit } = renderWithSpeech(state);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
+    });
+    act(() => { provider.emitFinal('How are you currently training reps?'); });
+    act(() => { provider.finish(); });
+
+    // Nothing submitted yet — the user must review first.
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    expect(onSubmit).toHaveBeenCalledWith('How are you currently training reps?');
+  });
+
+  it('never writes recognised text into the conversation transcript before Send', async () => {
+    const state = await runEngine([]);
+    const { provider } = renderWithSpeech(state);
+    // The transcript message list only — not the surrounding card (which also
+    // contains the draft box).
+    const transcriptLog = screen.getByRole('log', { name: /conversation transcript/i });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
+    });
+    act(() => { provider.emitFinal('Not in the transcript yet.'); });
+
+    expect(within(transcriptLog).queryByText(/Not in the transcript yet/i)).toBeNull();
+    // It lives only in the editable draft until the user sends it.
+    expect(screen.getByRole('textbox', { name: /your response/i })).toHaveValue(
+      'Not in the transcript yet.',
+    );
+  });
+
+  it('disables the microphone while the engine is evaluating', async () => {
+    const state = { ...(await runEngine([])), status: 'Evaluating' as const };
+    renderWithSpeech(state);
+    expect(screen.getByRole('button', { name: /start voice input/i })).toBeDisabled();
+  });
+
+  it('disables the microphone while the customer reply is generating', async () => {
+    const state = { ...(await runEngine([])), status: 'GeneratingReply' as const };
+    renderWithSpeech(state);
+    expect(screen.getByRole('button', { name: /start voice input/i })).toBeDisabled();
+  });
+
+  it('disables the microphone once the call is completed', async () => {
+    const state = { ...(await runEngine([])), status: 'Completed' as const };
+    renderWithSpeech(state);
+    expect(screen.getByRole('button', { name: /start voice input/i })).toBeDisabled();
+  });
+
+  it('keeps typed input working when speech is unsupported', async () => {
+    const state = await runEngine([]);
+    const { onSubmit } = renderWithSpeech(state, false);
+
+    const box = screen.getByRole('textbox', { name: /your response/i });
+    expect(box).not.toBeDisabled();
+    fireEvent.change(box, { target: { value: 'Typed even without speech.' } });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    expect(onSubmit).toHaveBeenCalledWith('Typed even without speech.');
+  });
+});
 
 describe('LiveRoleplay — live scoring UI', () => {
   // The Overall value lives in the tile whose label is "Overall".

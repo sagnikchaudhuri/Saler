@@ -132,11 +132,54 @@
   substituted, a warning is stored and displayed, and the session is still
   saved — the transcript and score history are never lost.
 
-## Phase 5 — Browser speech input  `[ ]`
-- [ ] SpeechRecognition / webkitSpeechRecognition wrapper
-- [ ] Typed fallback when unsupported / denied
-- [ ] Mic disabled while customer audio plays
-- [ ] Checks + commit
+## Phase 5 — Browser speech input  `[x]`
+- [x] SpeechRecognitionProvider abstraction (Browser + Mock), no browser APIs in components
+- [x] Typed Web Speech API declarations (no `any`), standard + webkit prefixes
+- [x] Recognition states separate from the conversation engine
+- [x] Mic permission requested only on explicit user action
+- [x] Interim / final / editable-draft tracked separately; no auto-submit
+- [x] Controls: Speak, Stop, Cancel, Clear draft; double-start guarded
+- [x] Voice and typed input converge on the same submitSeller path
+- [x] Mic disabled during Evaluating / GeneratingReply / Completed
+- [x] Media-coordination guard prepared for Phase 6 audio output
+- [x] Accessibility: labels, aria-live, focus return, no colour-only state, reduced motion
+- [x] Error mapping with friendly messages; no repeated permission prompts
+- [x] Cleanup on unmount, navigation, and End Call
+- [x] Tests (253 total): provider, hook, coordination, UI, integration
+- [x] Checks: typecheck ✅ · lint ✅ · tests ✅ (253) · build ✅
+- [x] Browser-verified: real permission-denied path, typed fallback, mobile layout, privacy
+
+### Architecture note — speech input (Phase 5)
+- **Provider abstraction.** `SpeechRecognitionProvider` has two implementations
+  (browser + mock). React components never call `SpeechRecognition` directly,
+  so the fragile browser API is isolated in one testable place and the UI can
+  be driven deterministically in tests.
+- **Recognised text is editable before sending.** Speech-to-text makes
+  mistakes, so final results land in a draft the user can correct. Nothing is
+  ever auto-submitted, and recognised text never enters the conversation
+  transcript until the user presses Send.
+- **One submit path.** Typed and spoken input both call the same
+  `submitSeller`, so there is exactly one conversation/scoring pipeline — voice
+  cannot drift from typed behaviour or bypass evaluation.
+- **Browser support.** Chromium browsers expose `webkitSpeechRecognition`;
+  Firefox generally has none; recognition needs a secure context and an
+  internet connection, and stops itself after silence. We therefore use a
+  manually controlled session (not endless continuous listening) with a
+  30-second safety auto-stop, default language `en-IN` (configurable in code).
+  Where unsupported, the mic is disabled and typed input carries the whole app.
+- **Privacy.** No raw audio is captured, stored, or uploaded anywhere; interim
+  text is never persisted; only submitted seller text enters the transcript and
+  session history. Recognition is performed by the browser's own service, which
+  for Chromium typically means audio is sent to the browser vendor — this is
+  **not** a fully local/offline feature and is not claimed to be.
+- **Cleanup lifecycle.** Sessions are aborted and handlers detached on unmount,
+  on navigating away, when the conversation stops accepting input (Evaluating,
+  GeneratingReply, End Call), and before every submit — so no stale handler can
+  fire and no recognition outlives the call.
+- **Phase 6 preparation.** `computeMediaActivity()` already blocks listening
+  while customer audio is playing or preparing, so adding ElevenLabs output
+  will not require reworking microphone logic (this prevents the mic hearing
+  the customer's own voice).
 
 ## Phase 6 — ElevenLabs secure voice integration  `[ ]`
 - [ ] VoiceProvider interface + Mock + BrowserSpeechSynthesis providers
