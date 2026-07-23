@@ -14,7 +14,7 @@ import type { FinalReport } from '../final/types';
 // ============================================================================
 
 /** Bump when the stored shape changes; add a migration in the repository. */
-export const SESSION_SCHEMA_VERSION = 1;
+export const SESSION_SCHEMA_VERSION = 2;
 
 /** localStorage key that holds the array of stored sessions. */
 export const SESSIONS_STORAGE_KEY = 'salessim.sessions';
@@ -28,6 +28,15 @@ export interface StoredProviderNames {
   finalEvaluator: string;
 }
 
+/** Which implementation actually handled each capability during the call. */
+export type CapabilityMode = 'ai' | 'demo' | 'mixed' | 'none';
+
+export interface StoredProviderModes {
+  customer: CapabilityMode;
+  turnEvaluator: CapabilityMode;
+  finalReport: CapabilityMode;
+}
+
 /** A completed, persisted roleplay session. */
 export interface StoredSession {
   id: string;
@@ -39,6 +48,8 @@ export interface StoredSession {
   durationMs: number;
   scenarioId: string;
   providerNames: StoredProviderNames;
+  /** Honest record of AI vs deterministic handling, per capability. */
+  providerModes: StoredProviderModes;
   demoMode: boolean;
   transcript: TranscriptTurn[];
   finalStage: SalesStage;

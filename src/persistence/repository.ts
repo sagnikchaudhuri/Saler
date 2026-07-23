@@ -48,10 +48,21 @@ function isValidSession(x: unknown): x is StoredSession {
 /** Migrate a raw stored session to the current version, or null if unusable. */
 function migrate(raw: unknown): StoredSession | null {
   if (!isValidSession(raw)) return null;
-  // Only the current version is known so far. A newer/unknown version cannot be
-  // trusted, so it is dropped rather than misread. Add real migrations here.
-  if (raw.schemaVersion !== SESSION_SCHEMA_VERSION) return null;
-  return raw;
+  if (raw.schemaVersion === SESSION_SCHEMA_VERSION) return raw;
+
+  // v1 → v2: provider-mode metadata was added. Everything stored before AI
+  // support existed was, by definition, produced deterministically.
+  if (raw.schemaVersion === 1) {
+    return {
+      ...raw,
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      providerModes: { customer: 'demo', turnEvaluator: 'demo', finalReport: 'demo' },
+    };
+  }
+
+  // A newer/unknown version cannot be trusted, so it is dropped rather than
+  // misread.
+  return null;
 }
 
 export class SessionRepository {

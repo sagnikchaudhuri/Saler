@@ -1,39 +1,44 @@
 import type { ConversationProvider } from './types';
 import { DemoConversationProvider } from './DemoConversationProvider';
 import { LLMConversationProvider } from './LLMConversationProvider';
+import { FallbackConversationProvider } from '../ai/fallback';
 
 export interface ProviderSelection {
   provider: ConversationProvider;
-  /** True when the active provider is the offline Demo persona. */
+  /** True when no AI customer is configured at all. */
   demoMode: boolean;
+  /** Exposed so the engine can read which implementation handled each turn. */
+  fallback: FallbackConversationProvider;
 }
 
 export interface CreateProviderConfig {
-  /** Non-secret flag: is a server-side LLM route configured? Default false. */
+  /** Non-secret flag from the /api/ai-status probe. */
   llmEnabled?: boolean;
-  /** Serverless endpoint path for the LLM route (later phase). */
+  /** Serverless endpoint path. */
   llmEndpoint?: string;
   /** Realistic typing delay for the Demo provider (0 in tests). */
   demoDelayMs?: number;
 }
 
 /**
- * Choose a provider. Prefers the LLM provider when it is genuinely available;
- * otherwise falls back to the always-available Demo provider. This is the one
- * place provider switching happens, which keeps it easy to test.
+ * Build the conversation provider.
+ *
+ * When AI is configured the LLM customer is tried first and the deterministic
+ * persona catches any failure FOR THAT TURN — the call never breaks because a
+ * model did. With no AI configured this is pure Demo Mode, exactly as before.
  */
 export function createConversationProvider(
   config: CreateProviderConfig = {},
 ): ProviderSelection {
-  const llm = new LLMConversationProvider({
-    enabled: config.llmEnabled,
-    endpoint: config.llmEndpoint,
-  });
-  if (llm.isAvailable()) {
-    return { provider: llm, demoMode: false };
-  }
-  return {
-    provider: new DemoConversationProvider(config.demoDelayMs ?? 0),
-    demoMode: true,
-  };
+  const demo = new DemoConversationProvider(config.demoDelayMs ?? 0);
+  const llm =
+    config.llmEnabled && config.llmEndpoint
+      ? new LLMConversationProvider({
+          enabled: true,
+          endpoint: config.llmEndpoint,
+        })
+      : null;
+
+  const fallback = new FallbackConversationProvider(llm, demo);
+  return { provider: fallback, demoMode: llm === null, fallback };
 }

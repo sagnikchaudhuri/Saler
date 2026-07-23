@@ -23,6 +23,7 @@ function makeSession(id: string, endTime: number): StoredSession {
     durationMs: 60_000,
     scenarioId: 'scenario-1',
     providerNames: { conversation: 'c', realtimeEvaluator: 'r', finalEvaluator: 'f' },
+    providerModes: { customer: 'demo', turnEvaluator: 'demo', finalReport: 'demo' },
     demoMode: true,
     transcript: [
       { id: 't1', speaker: 'customer', message: 'hello?', stage: 'opening', timestamp: 1 },

@@ -44,9 +44,12 @@ export function LiveRoleplay({
   speechProvider,
   coordinator,
   voice,
+  customerName = 'Demo Customer',
 }: {
   state: ConversationEngineState;
   evaluatorName: string;
+  /** Which implementation last produced a customer reply. */
+  customerName?: string;
   onSubmit: (text: string) => void;
   onRetry: () => void;
   onEndCall: () => void;
@@ -136,12 +139,28 @@ export function LiveRoleplay({
             </div>
 
             {/* Evaluation status + non-blocking evaluator warning */}
+            {/* Honest labelling: these reflect what ACTUALLY handled the last
+                request, not what was configured. */}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-400">
-              <span>Evaluator: <span className="text-ink-300">{evaluatorName}</span></span>
+              <span>
+                Customer: <span className="text-ink-300">{customerName}</span>
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                Evaluation: <span className="text-ink-300">{evaluatorName}</span>
+              </span>
               {state.status === 'Evaluating' && (
                 <span className="text-accent-soft">· Analysing your response…</span>
               )}
             </div>
+            {state.capabilityWarning && (
+              <div
+                role="status"
+                className="mt-2 rounded-lg border border-warn/30 bg-warn/10 p-2 text-xs text-warn"
+              >
+                ⚠ {state.capabilityWarning}
+              </div>
+            )}
             {state.evaluatorWarning && (
               <div
                 role="status"

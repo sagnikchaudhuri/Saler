@@ -15,6 +15,14 @@ const STAGE_LABEL: Record<SalesStage, string> = {
   next_step: 'Next Step',
 };
 
+/** Truthful labels: 'mixed' means some turns fell back mid-call. */
+const MODE_LABEL: Record<string, string> = {
+  ai: 'Live AI',
+  demo: 'Deterministic (Demo)',
+  mixed: 'Mixed — AI with deterministic fallback',
+  none: 'Not used',
+};
+
 const CATEGORY_LABELS: [keyof FinalCategoryScores, string][] = [
   ['opening_and_confidence', 'Opening & Confidence'],
   ['discovery_questions', 'Discovery Questions'],
@@ -267,9 +275,9 @@ export function FinalReport({
             <Meta label="Scenario" value={session.scenarioId} />
             <Meta label="Session ID" value={session.id} />
             <Meta label="Schema version" value={String(session.schemaVersion)} />
-            <Meta label="Customer model" value={session.providerNames.conversation} />
-            <Meta label="Live evaluator" value={session.providerNames.realtimeEvaluator} />
-            <Meta label="Final evaluator" value={session.providerNames.finalEvaluator} />
+            <Meta label="Customer" value={MODE_LABEL[session.providerModes?.customer ?? 'demo']} />
+            <Meta label="Turn evaluation" value={MODE_LABEL[session.providerModes?.turnEvaluator ?? 'demo']} />
+            <Meta label="Final review" value={MODE_LABEL[session.providerModes?.finalReport ?? 'demo']} />
           </dl>
         </Card>
       </div>

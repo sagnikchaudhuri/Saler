@@ -23,7 +23,7 @@ import type {
 } from '../final/types';
 import { DemoFinalEvaluatorProvider } from '../final/DemoFinalEvaluatorProvider';
 import { validateFinalReport, safeFinalFallback } from '../final/validate';
-import type { StoredSession } from '../persistence/types';
+import type { CapabilityMode, StoredSession } from '../persistence/types';
 import { SESSION_SCHEMA_VERSION } from '../persistence/types';
 
 /** Maximum characters accepted from the seller in one turn. */
@@ -49,6 +49,11 @@ export interface ConversationEngineState {
   scoreState: ScoreState;
   /** Non-blocking warning shown when the evaluator fell back for a turn. */
   evaluatorWarning: string | null;
+  /**
+   * Non-blocking notice when a capability changed mid-call (e.g. the AI
+   * customer became unavailable and the scripted persona took over).
+   */
+  capabilityWarning: string | null;
   /** Final post-call report (populated on End Call). */
   finalReport: FinalReport | null;
   /** Average visible overall across the call (populated on End Call). */
@@ -62,6 +67,21 @@ export interface EngineOptions {
   demoMode: boolean;
   /** Injectable clock for deterministic tests. */
   now?: () => number;
+  /**
+   * Reports which implementation actually handled each capability, so the UI
+   * and saved session can label AI vs deterministic honestly.
+   */
+  providerModes?: {
+    customer: () => CapabilityMode;
+    turnEvaluator: () => CapabilityMode;
+    finalReport: () => CapabilityMode;
+  };
+  /** Reads a one-off "we fell back" message after a request, if any. */
+  fallbackNotices?: {
+    customer: () => string | null;
+    turnEvaluator: () => string | null;
+    finalReport: () => string | null;
+  };
 }
 
 type Listener = (state: ConversationEngineState) => void;
@@ -133,6 +153,7 @@ export class ConversationEngine {
       demoMode: options.demoMode,
       scoreState: createInitialScoreState(),
       evaluatorWarning: null,
+      capabilityWarning: null,
       finalReport: null,
       liveAverage: null,
       completedSession: null,
@@ -259,7 +280,12 @@ export class ConversationEngine {
     }
 
     this.applyReply(text, reply);
-    this.setState({ status: 'WaitingForSeller' });
+    // Surface a mid-call capability change (e.g. AI customer → scripted).
+    const customerNotice = this.options.fallbackNotices?.customer() ?? null;
+    this.setState({
+      status: 'WaitingForSeller',
+      capabilityWarning: customerNotice ?? this.state.capabilityWarning,
+    });
   }
 
   /**
@@ -302,6 +328,12 @@ export class ConversationEngine {
       warning = 'Evaluation is temporarily unavailable; scoring was skipped for this turn.';
     }
 
+    // A capability downgrade (AI evaluator → deterministic) is not an error;
+    // record it honestly without alarming the user.
+    const evaluatorNotice = this.options.fallbackNotices?.turnEvaluator() ?? null;
+    if (evaluatorNotice) {
+      this.sessionWarnings.push(`Turn ${previousSellerMessages.length + 1}: ${evaluatorNotice}`);
+    }
     if (warning) this.sessionWarnings.push(`Turn ${previousSellerMessages.length + 1}: ${warning}`);
 
     const sellerTurnNumber = previousSellerMessages.length + 1;
@@ -314,7 +346,11 @@ export class ConversationEngine {
       objectionActive: this.state.objectionsRaised.length > 0,
     });
 
-    this.setState({ scoreState, evaluatorWarning: warning });
+    this.setState({
+      scoreState,
+      evaluatorWarning: warning,
+      capabilityWarning: evaluatorNotice ?? this.state.capabilityWarning,
+    });
   }
 
   private applyReply(sellerMessage: string, reply: ProviderReply): void {
@@ -417,9 +453,12 @@ export class ConversationEngine {
         'The final evaluation was unavailable, so a safe summary based on your live scores is shown instead.';
     }
 
-    const fallbackWarnings = finalWarning
-      ? [...this.sessionWarnings, finalWarning]
-      : [...this.sessionWarnings];
+    const finalNotice = this.options.fallbackNotices?.finalReport() ?? null;
+    const fallbackWarnings = [
+      ...this.sessionWarnings,
+      ...(finalNotice ? [finalNotice] : []),
+      ...(finalWarning ? [finalWarning] : []),
+    ];
 
     const completedSession: StoredSession = {
       id: makeSessionId(startedAt, endedAt),
@@ -433,6 +472,12 @@ export class ConversationEngine {
         conversation: this.provider.getName(),
         realtimeEvaluator: this.evaluator.getName(),
         finalEvaluator: this.finalEvaluator.getName(),
+      },
+      // Honest per-capability record of what actually ran during this call.
+      providerModes: {
+        customer: this.options.providerModes?.customer() ?? 'demo',
+        turnEvaluator: this.options.providerModes?.turnEvaluator() ?? 'demo',
+        finalReport: this.options.providerModes?.finalReport() ?? 'demo',
       },
       demoMode: this.state.demoMode,
       transcript: this.state.transcript,

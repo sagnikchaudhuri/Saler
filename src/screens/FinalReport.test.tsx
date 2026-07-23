@@ -25,6 +25,7 @@ function makeSession(over: Partial<StoredSession> = {}): StoredSession {
     durationMs: 120_000,
     scenarioId: 'rohan-mehta-sales-enablement',
     providerNames: { conversation: 'Demo customer', realtimeEvaluator: 'Demo evaluator', finalEvaluator: 'Demo final evaluator' },
+    providerModes: { customer: 'demo', turnEvaluator: 'demo', finalReport: 'demo' },
     demoMode: true,
     transcript: [
       { id: 't1', speaker: 'customer', message: 'Hi, this is Rohan.', stage: 'opening', timestamp: 1 },
@@ -163,10 +164,22 @@ describe('FinalReport — content & transcript', () => {
     expect(screen.getByText(/final evaluation was unavailable/i)).toBeInTheDocument();
   });
 
-  it('renders session metadata and provider names', () => {
+  it('renders session metadata and honest AI/Demo mode labels', () => {
     renderReport(makeSession());
-    expect(screen.getByText('Demo final evaluator')).toBeInTheDocument();
     expect(screen.getByText('sess-1')).toBeInTheDocument();
+    // Deterministic run must not be labelled as AI.
+    expect(screen.getAllByText('Deterministic (Demo)').length).toBe(3);
+    expect(screen.queryByText('Live AI')).toBeNull();
+  });
+
+  it('labels a live-AI run as AI and a partial fallback as mixed', () => {
+    renderReport(
+      makeSession({
+        providerModes: { customer: 'ai', turnEvaluator: 'mixed', finalReport: 'ai' },
+      }),
+    );
+    expect(screen.getAllByText('Live AI').length).toBe(2);
+    expect(screen.getByText(/Mixed — AI with deterministic fallback/)).toBeInTheDocument();
   });
 
   it('shows an empty state when there is no session', () => {

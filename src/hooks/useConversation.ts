@@ -5,24 +5,49 @@ import { createConversationProvider, type CreateProviderConfig } from '../conver
 import { createEvaluatorProvider } from '../evaluation/provider';
 import { createFinalEvaluatorProvider } from '../final/provider';
 import { sessionRepository } from '../persistence/repository';
+import type { CapabilityMode } from '../persistence/types';
+import { getAiStatus } from '../ai/status';
 
-function createEngine(config: CreateProviderConfig): ConversationEngine {
-  const { provider, demoMode } = createConversationProvider(config);
-  // Each provider is selected independently; in Demo Mode all three fall back
-  // to their deterministic implementations.
-  const { provider: evaluator } = createEvaluatorProvider({
-    llmEnabled: config.llmEnabled,
-    llmEndpoint: config.llmEndpoint,
+export const AI_ROUTES = {
+  conversation: '/api/conversation',
+  evaluateTurn: '/api/evaluate-turn',
+  evaluateFinal: '/api/evaluate-final',
+} as const;
+
+function createEngine(config: CreateProviderConfig, aiEnabled: boolean): ConversationEngine {
+  const conversation = createConversationProvider({
+    ...config,
+    llmEnabled: aiEnabled,
+    llmEndpoint: aiEnabled ? AI_ROUTES.conversation : undefined,
   });
-  const { provider: finalEvaluator } = createFinalEvaluatorProvider({
-    llmEnabled: config.llmEnabled,
-    llmEndpoint: config.llmEndpoint,
+  const evaluator = createEvaluatorProvider({
+    llmEnabled: aiEnabled,
+    llmEndpoint: aiEnabled ? AI_ROUTES.evaluateTurn : undefined,
   });
+  const finalEvaluator = createFinalEvaluatorProvider({
+    llmEnabled: aiEnabled,
+    llmEndpoint: aiEnabled ? AI_ROUTES.evaluateFinal : undefined,
+  });
+
   return new ConversationEngine(
-    provider,
-    { scenarioId: SALES_SCENARIO.id, demoMode },
-    evaluator,
-    finalEvaluator,
+    conversation.provider,
+    {
+      scenarioId: SALES_SCENARIO.id,
+      demoMode: conversation.demoMode,
+      // Report what ACTUALLY handled each capability, not what was configured.
+      providerModes: {
+        customer: () => conversation.fallback.tracker.summary() as CapabilityMode,
+        turnEvaluator: () => evaluator.fallback.tracker.summary() as CapabilityMode,
+        finalReport: () => finalEvaluator.fallback.tracker.summary() as CapabilityMode,
+      },
+      fallbackNotices: {
+        customer: () => conversation.fallback.lastFallbackReason,
+        turnEvaluator: () => evaluator.fallback.lastFallbackReason,
+        finalReport: () => finalEvaluator.fallback.lastFallbackReason,
+      },
+    },
+    evaluator.provider,
+    finalEvaluator.provider,
   );
 }
 
@@ -31,6 +56,8 @@ export interface UseConversation {
   providerName: string;
   evaluatorName: string;
   finalEvaluatorName: string;
+  /** True when a server-side LLM is configured (probed, never a browser key). */
+  aiEnabled: boolean;
   start: () => void;
   submit: (text: string) => void;
   endCall: () => void;
@@ -45,11 +72,34 @@ export interface UseConversation {
  */
 export function useConversation(config: CreateProviderConfig = {}): UseConversation {
   const [version, setVersion] = useState(0);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const aiEnabledRef = useRef(false);
+
   const engineRef = useRef<ConversationEngine | null>(null);
   if (engineRef.current === null) {
-    engineRef.current = createEngine(config);
+    engineRef.current = createEngine(config, aiEnabledRef.current);
   }
   const engine = engineRef.current;
+
+  // Probe once whether the server has an LLM configured. Until it answers we
+  // stay in Demo Mode, so the UI never claims AI it does not have.
+  useEffect(() => {
+    let cancelled = false;
+    void getAiStatus().then((status) => {
+      if (cancelled || status.enabled === aiEnabledRef.current) return;
+      aiEnabledRef.current = status.enabled;
+      setAiEnabled(status.enabled);
+      // Only swap in AI providers before a call starts; never mid-conversation.
+      if (engineRef.current?.getState().status === 'Idle') {
+        engineRef.current = createEngine(config, status.enabled);
+        setVersion((v) => v + 1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const subscribe = useCallback(
     (cb: () => void) => engine.subscribe(cb),
@@ -73,7 +123,7 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
   const endCall = useCallback(() => void engine.endCall(), [engine]);
   const retry = useCallback(() => engine.retry(), [engine]);
   const reset = useCallback(() => {
-    engineRef.current = createEngine(config);
+    engineRef.current = createEngine(config, aiEnabledRef.current);
     setVersion((v) => v + 1);
   }, [config]);
 
@@ -82,6 +132,7 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
     providerName: engine.getProviderName(),
     evaluatorName: engine.getEvaluatorName(),
     finalEvaluatorName: engine.getFinalEvaluatorName(),
+    aiEnabled,
     start,
     submit,
     endCall,

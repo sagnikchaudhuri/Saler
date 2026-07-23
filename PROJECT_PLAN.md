@@ -232,11 +232,13 @@
 
 #### Verification status — actual vs mocked (honest)
 - **Verified against the real ElevenLabs API:** the route reaches ElevenLabs
-  and the credential is accepted end-to-end. The upstream returned **HTTP 402
-  (out of credits)**, which proves the key and endpoint are valid (a bad key
-  returns 401; a bad voice ID returns 404).
-- **NOT verified:** actual ElevenLabs audio playback, because the account has
-  no remaining credits. No ElevenLabs audio has ever been heard from this app.
+  and receives a real HTTP response. The upstream returned **HTTP 402**, which
+  confirms only that **usable credits were unavailable**. It does **not**
+  validate the configured voice ID, because upstream validation order is not
+  guaranteed — a request can be rejected for billing before the voice ID is
+  ever checked.
+- **NOT verified:** actual ElevenLabs audio playback **and the voice ID**.
+  No ElevenLabs audio has ever been produced or heard from this app.
 - **Verified live in-browser:** the full three-step fallback
   (ElevenLabs 402 → Browser voice → Silent Mode), the honest "Silent Mode"
   label plus its notice, one utterance per new customer turn, no playback on
@@ -271,7 +273,62 @@
   real browser. **Actual ElevenLabs playback is not yet implemented or
   verified** — it lands in Phase 6b once a voice ID is configured.
 
-## Phase 7 — Testing & resilience  `[ ]`
+## Phase 7 — Secure AI integration  `[x]`
+- [x] Provider chosen: **OpenAI-compatible** (no Gemini/Anthropic key present)
+- [x] Secure routes: `/api/conversation`, `/api/evaluate-turn`,
+      `/api/evaluate-final`, plus a secret-free `/api/ai-status` probe
+- [x] Shared framework-agnostic handlers (Vercel adapters + Vite dev middleware)
+- [x] LLM providers wired for all three capabilities
+- [x] Per-capability independent fallback with honest AI/Demo labelling
+- [x] Session schema v2 + v1→v2 migration recording provider modes
+- [x] 398 tests · typecheck ✅ · lint ✅ · build ✅
+- [x] Secret scan: no key, no provider URL, no system prompt in the bundle
+
+### Architecture note — secure AI integration (Phase 7)
+- **Route architecture.** The browser never calls a model provider. It posts to
+  same-origin routes; only the server reads `OPENAI_API_KEY`. Core handlers are
+  dependency-injected so the Vercel functions, the Vite dev middleware, and the
+  tests all execute identical logic.
+- **Provider-independent fallback.** AI Mode is **not** all-or-nothing. The
+  customer, turn evaluator, and final review each fall back to their
+  deterministic counterpart on failure, independently, per request. A failed
+  model never ends a call and never loses a session.
+- **Deterministic scoring stays authoritative.** The AI evaluator returns
+  **signals only** — the same 19 booleans the deterministic evaluator produces,
+  validated by the same validator. It cannot write a score, weight, or metric.
+- **Structured validation.** JSON-mode output, conservative fence-stripping (no
+  permissive "repair" parsing), then strict schema validation. The final report
+  is additionally checked against the transcript: an invented quote or an
+  objection that was never raised is rejected and the deterministic report is
+  used instead.
+- **Cost controls.** Bounded context (12 recent turns for the customer, 8 for
+  evaluation, 40 for the final review), capped output tokens, a 600-character
+  cap on customer replies, transcript/message size limits, and **one request
+  per capability per turn** with no retries beyond the single fallback.
+- **Request deduplication.** Each provider aborts a prior in-flight request
+  before starting a new one; the final review runs exactly once per completed
+  call; playback and evaluation are keyed so re-renders cannot duplicate work.
+- **Honest labelling.** The live screen shows which implementation produced the
+  last customer reply and the last evaluation; the saved session records
+  `providerModes` (`ai` / `demo` / `mixed`) per capability, and the report
+  displays them.
+
+#### Verification status — actual vs mocked (honest)
+- **Not verified against a live model.** No production LLM call was made. An
+  `OPENAI_API_KEY` exists in the shell environment, but it was not configured
+  by the user for this project, so it was deliberately **not spent**.
+- **Verified live in-browser (no credits used):** `/api/ai-status` reporting
+  correctly; every validation guard (405/400/413) on all three routes; a full
+  turn with the AI routes failing → deterministic fallback, honest "Demo"
+  labels, a capability warning, and the call continuing; End Call producing a
+  session at schema v2 with `providerModes` and fallback warnings recorded;
+  and a full AI-success path with mocked routes showing "AI Customer" /
+  "AI Evaluation" labels while the deterministic engine still set the score
+  (Discovery 40→50 from signals alone).
+- **Mocked only:** all upstream model behaviour — success payloads, auth
+  failure, rate limiting, timeouts, malformed JSON, and schema violations.
+
+## Phase 7b — Testing & resilience  `[ ]`
 - [ ] Scoring tests (all cases)
 - [ ] Conversation tests (valid/invalid JSON/empty/limits/demo)
 - [ ] Voice tests (fallback/cancel/overlap)

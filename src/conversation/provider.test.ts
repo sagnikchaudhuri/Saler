@@ -11,13 +11,16 @@ describe('provider switching', () => {
     expect(provider.isAvailable()).toBe(true);
   });
 
-  it('selects the LLM provider only when enabled AND an endpoint is set', () => {
+  it('selects the AI customer only when enabled AND an endpoint is set', () => {
     const { provider, demoMode } = createConversationProvider({
       llmEnabled: true,
       llmEndpoint: '/api/conversation',
     });
     expect(demoMode).toBe(false);
-    expect(provider.getName()).toMatch(/llm/i);
+    // The factory returns the fallback composite, which reports the AI
+    // customer until a turn actually falls back to the scripted persona.
+    expect(provider.getName()).toMatch(/ai customer/i);
+    expect(provider.isAvailable()).toBe(true);
   });
 
   it('does not select the LLM provider when only the flag is set', () => {

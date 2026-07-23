@@ -107,6 +107,7 @@ export default function App() {
         <LiveRoleplay
           state={convo.state}
           evaluatorName={convo.evaluatorName}
+          customerName={convo.providerName}
           onSubmit={convo.submit}
           onRetry={convo.retry}
           onEndCall={handleEndCall}

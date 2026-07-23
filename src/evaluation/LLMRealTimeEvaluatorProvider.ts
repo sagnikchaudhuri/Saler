@@ -1,37 +1,85 @@
 import type { EvaluatorResult } from '../types';
 import type { EvaluationContext, RealTimeEvaluatorProvider } from './types';
 import { EvaluatorUnavailableError } from './errors';
+import { validateEvaluatorResult } from './validate';
 
 export interface LLMEvaluatorConfig {
-  /**
-   * Non-secret feature flag: is a server-side evaluator route configured?
-   * The API key lives in a server env var and is never exposed to the browser.
-   * Disabled until a later phase wires the serverless endpoint.
-   */
+  /** From the secret-free /api/ai-status probe, never a key in the browser. */
   enabled?: boolean;
   endpoint?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }
 
 /**
- * Real-LLM evaluator. DISABLED in Phase 3 — there is no secure endpoint yet.
- * Implements the same interface as the Demo evaluator so the engine can adopt
- * it later with no changes. When enabled it will POST the evaluation context to
- * a server route that holds the key and returns a result we then validate.
+ * AI turn evaluator.
+ *
+ * It returns SIGNALS ONLY — the deterministic TypeScript scoring engine stays
+ * authoritative and converts signals into metric changes. The model can never
+ * write a score, adjust a weight, or mutate a metric, because nothing here
+ * passes anything but validated booleans onward.
  */
 export class LLMRealTimeEvaluatorProvider implements RealTimeEvaluatorProvider {
-  constructor(private readonly config: LLMEvaluatorConfig = {}) {}
+  private readonly fetchImpl: typeof fetch;
+  private controller: AbortController | null = null;
+
+  constructor(private readonly config: LLMEvaluatorConfig = {}) {
+    this.fetchImpl = config.fetchImpl ?? ((...args) => fetch(...args));
+  }
 
   getName(): string {
-    return 'LLM evaluator (server-side, disabled until configured)';
+    return 'AI Evaluation';
   }
 
   isAvailable(): boolean {
     return this.config.enabled === true && typeof this.config.endpoint === 'string';
   }
 
-  async evaluate(_ctx: EvaluationContext): Promise<EvaluatorResult> {
-    throw new EvaluatorUnavailableError(
-      'The LLM evaluator is not configured yet. Using the deterministic evaluator.',
-    );
+  cancel(): void {
+    this.controller?.abort();
+    this.controller = null;
+  }
+
+  async evaluate(ctx: EvaluationContext): Promise<EvaluatorResult> {
+    if (!this.isAvailable()) {
+      throw new EvaluatorUnavailableError('The AI evaluator is not configured.');
+    }
+
+    // One evaluation request per seller turn.
+    this.cancel();
+    const controller = new AbortController();
+    this.controller = controller;
+    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 20_000);
+
+    try {
+      const response = await this.fetchImpl(this.config.endpoint!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sellerMessage: ctx.sellerMessage,
+          latestCustomerStatement: ctx.latestCustomerStatement ?? '',
+          stage: ctx.stage,
+          transcript: ctx.transcript.slice(-8).map((t) => ({
+            speaker: t.speaker === 'seller' ? 'seller' : 'customer',
+            message: t.message,
+          })),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) throw new EvaluatorUnavailableError();
+
+      // Same strict validator the deterministic evaluator is held to. Anything
+      // that is not a complete, well-typed signal set is rejected outright.
+      const validated = validateEvaluatorResult(await response.json());
+      if (!validated.ok || !validated.value) throw new EvaluatorUnavailableError();
+      return validated.value;
+    } catch (err) {
+      if (err instanceof EvaluatorUnavailableError) throw err;
+      throw new EvaluatorUnavailableError();
+    } finally {
+      clearTimeout(timer);
+      if (this.controller === controller) this.controller = null;
+    }
   }
 }
