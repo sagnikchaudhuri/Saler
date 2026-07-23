@@ -6,7 +6,7 @@
 export function ScoreTrend({ values }: { values: number[] }) {
   if (values.length === 0) {
     return (
-      <div className="grid h-24 place-items-center rounded-lg border border-dashed border-white/10 text-xs text-ink-400">
+      <div className="grid h-24 place-items-center rounded-lg border border-dashed border-line text-xs text-ink-muted">
         Your score trend appears after your first turn.
       </div>
     );

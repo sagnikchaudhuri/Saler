@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Badge } from '../components/ui';
+import { Badge } from '../components/ui';
 import { useSessions } from '../hooks/useSessions';
 import type { StoredSession } from '../persistence/types';
 import type { SalesStage } from '../types';
@@ -43,144 +43,135 @@ export function SessionHistory({
   const [confirmClear, setConfirmClear] = useState(false);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div className="mx-auto max-w-3xl animate-rise-in">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="text-xs uppercase tracking-widest text-accent-soft">
-            Session History
-          </div>
-          <h1 className="mt-1 text-2xl font-semibold text-ink-100">Your Practice Log</h1>
-          <p className="mt-1 text-sm text-ink-300">
+          <p className="eyebrow">History</p>
+          <h1 className="display mt-3 text-4xl">Your practice log</h1>
+          <p className="mt-3 text-ink-secondary">
             Completed sessions are stored locally in this browser. Nothing leaves
             your device.
           </p>
         </div>
         {sessions.length > 0 && (
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => setConfirmClear(true)}
-          >
+          <button type="button" className="btn-quiet text-sm" onClick={() => setConfirmClear(true)}>
             Clear All
           </button>
         )}
       </div>
 
       {recoveryWarning && (
-        <div role="status" className="rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
-          ⚠ {recoveryWarning}
-        </div>
+        <p role="status" className="mt-6 rounded-lg bg-caution/5 p-3 text-sm text-caution">
+          {recoveryWarning}
+        </p>
       )}
 
       {confirmClear && (
-        <Card>
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <p className="text-sm text-ink-100">
-              Delete all {sessions.length} saved session
-              {sessions.length === 1 ? '' : 's'}? This cannot be undone.
-            </p>
-            <div className="flex gap-2">
-              <button type="button" className="btn-ghost" onClick={() => setConfirmClear(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={() => {
-                  clearAll();
-                  setConfirmClear(false);
-                }}
-              >
-                Delete All
-              </button>
-            </div>
+        <div className="mt-6 flex flex-col justify-between gap-3 rounded-xl border border-line p-4 sm:flex-row sm:items-center">
+          <p className="text-sm text-ink">
+            Delete all {sessions.length} saved session
+            {sessions.length === 1 ? '' : 's'}? This cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost" onClick={() => setConfirmClear(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => {
+                clearAll();
+                setConfirmClear(false);
+              }}
+            >
+              Delete All
+            </button>
           </div>
-        </Card>
+        </div>
       )}
 
       {sessions.length === 0 ? (
-        <Card>
-          <div className="grid place-items-center gap-3 py-12 text-center">
-            <div className="text-3xl" aria-hidden>🗂️</div>
-            <p className="text-sm text-ink-300">
-              No sessions yet. Complete a call and it will appear here.
-            </p>
-            <button type="button" className="btn-primary" onClick={onStart}>
-              Start a Call
-            </button>
-          </div>
-        </Card>
+        <div className="mt-16 border-t border-line pt-16 text-center">
+          <p className="text-lg text-ink">No sessions yet.</p>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-ink-secondary">
+            Complete a call and it will appear here, with the transcript and
+            coaching preserved.
+          </p>
+          <button type="button" className="btn-primary mt-8" onClick={onStart}>
+            Start a Call
+          </button>
+        </div>
       ) : (
-        <Card>
-          <ul className="divide-y divide-white/5">
-            {sessions.map((s) => {
-              const result = resultLabel(s);
-              const isConfirming = confirmDelete === s.id;
-              return (
-                <li key={s.id} className="py-4 first:pt-0 last:pb-0">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="grid h-12 w-12 flex-none place-items-center rounded-lg bg-white/5 text-base font-semibold text-ink-100">
-                        {s.finalReport.overall_score}
+        <ul className="mt-10">
+          {sessions.map((s) => {
+            const result = resultLabel(s);
+            const isConfirming = confirmDelete === s.id;
+            return (
+              <li key={s.id} className="border-t border-line py-6 last:border-b">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 items-baseline gap-5">
+                    <span className="numeric text-2xl font-semibold tracking-editorial text-ink">
+                      {s.finalReport.overall_score}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-sm text-ink">
+                        {new Date(s.date).toLocaleString()}
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-sm text-ink-100">
-                          {new Date(s.date).toLocaleString()}
-                        </div>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-400">
-                          <span>{formatDuration(s.durationMs)}</span>
-                          <span>Live avg {s.liveAverage}</span>
-                          <span>
-                            {s.sellerTurnCount} turn{s.sellerTurnCount === 1 ? '' : 's'}
-                          </span>
-                          <span>Reached {STAGE_LABEL[s.finalStage]}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={result.tone}>{result.text}</Badge>
-                      {s.demoMode && <Badge>Demo</Badge>}
-                      <button type="button" className="btn-ghost" onClick={() => onOpen(s)}>
-                        View Report
-                      </button>
-                      {!isConfirming ? (
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          aria-label={`Delete session from ${new Date(s.date).toLocaleString()}`}
-                          onClick={() => setConfirmDelete(s.id)}
-                        >
-                          Delete
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="btn-ghost"
-                            onClick={() => setConfirmDelete(null)}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-danger"
-                            onClick={() => {
-                              remove(s.id);
-                              setConfirmDelete(null);
-                            }}
-                          >
-                            Confirm Delete
-                          </button>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+                        <span className="numeric">{formatDuration(s.durationMs)}</span>
+                        <span className="numeric">Live avg {s.liveAverage}</span>
+                        <span>
+                          {s.sellerTurnCount} turn{s.sellerTurnCount === 1 ? '' : 's'}
                         </span>
-                      )}
+                        <span>Reached {STAGE_LABEL[s.finalStage]}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge tone={result.tone}>{result.text}</Badge>
+                        {s.demoMode && <Badge>Demo</Badge>}
+                      </div>
                     </div>
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        </Card>
+
+                  <div className="flex shrink-0 flex-wrap items-center gap-1">
+                    <button type="button" className="btn-quiet text-sm" onClick={() => onOpen(s)}>
+                      View Report
+                    </button>
+                    {!isConfirming ? (
+                      <button
+                        type="button"
+                        className="btn-quiet text-sm"
+                        aria-label={`Delete session from ${new Date(s.date).toLocaleString()}`}
+                        onClick={() => setConfirmDelete(s.id)}
+                      >
+                        Delete
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="btn-quiet text-sm"
+                          onClick={() => setConfirmDelete(null)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger text-sm"
+                          onClick={() => {
+                            remove(s.id);
+                            setConfirmDelete(null);
+                          }}
+                        >
+                          Confirm Delete
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

@@ -70,7 +70,7 @@ export function SellerInput({
   const micDisabled = !speech.media.canStartListening && !speech.isListening;
 
   return (
-    <div className="mt-4 border-t border-white/5 pt-4">
+    <div className="mt-4 border-t border-line pt-4">
       {/* Microphone row */}
       <div className="flex flex-wrap items-center gap-2">
         {!speech.isListening ? (
@@ -110,13 +110,13 @@ export function SellerInput({
 
         {/* Status: text + shape, never colour alone. */}
         <span
-          className="inline-flex items-center gap-1.5 text-xs text-ink-300"
+          className="inline-flex items-center gap-1.5 text-xs text-ink-secondary"
           aria-live="polite"
         >
           {speech.isListening && (
             <span
               aria-hidden
-              className="h-2 w-2 animate-pulse-soft rounded-full bg-bad motion-reduce:animate-none"
+              className="h-2 w-2 animate-pulse-soft rounded-full bg-critical motion-reduce:animate-none"
             />
           )}
           {STATUS_TEXT[speech.state]}
@@ -137,7 +137,7 @@ export function SellerInput({
       {/* Interim (partial) recognition preview */}
       {speech.isListening && (
         <p
-          className="mt-2 min-h-[1.25rem] text-xs italic text-ink-400"
+          className="mt-2 min-h-[1.25rem] text-xs italic text-ink-muted"
           aria-live="polite"
         >
           {speech.interim ? `Heard so far: ${speech.interim}` : 'Listening — start speaking…'}
@@ -160,28 +160,28 @@ export function SellerInput({
           disabled={!canSend}
           aria-label="Your response"
           placeholder={canSend ? 'Type or dictate your response…' : 'Waiting for Rohan…'}
-          className="min-h-[2.75rem] flex-1 resize-y rounded-lg border border-white/10 bg-navy-900/60 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 disabled:opacity-60"
+          className="min-h-[2.75rem] flex-1 resize-y rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink placeholder:text-ink-muted disabled:opacity-60"
         />
         <button type="button" className="btn-primary" onClick={send} disabled={!canSend}>
           Send
         </button>
       </div>
 
-      {inputError && <p className="mt-2 text-xs text-warn">{inputError}</p>}
+      {inputError && <p className="mt-2 text-xs text-caution">{inputError}</p>}
 
       {showError && (
-        <p role="status" className="mt-2 text-xs text-warn">
+        <p role="status" className="mt-2 text-xs text-caution">
           {speech.error!.message}
         </p>
       )}
 
       {!speech.isSupported && (
-        <p className="mt-2 text-[11px] text-ink-400">
+        <p className="mt-2 text-[11px] text-ink-muted">
           {speechErrorMessage('unsupported')}
         </p>
       )}
 
-      <p className="mt-2 text-[11px] text-ink-400">
+      <p className="mt-2 text-[11px] text-ink-muted">
         Press Enter to send, Shift+Enter for a new line. Speech is recognised by
         your browser&apos;s own service and is never stored as audio.
       </p>

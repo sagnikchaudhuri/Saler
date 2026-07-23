@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   html,
@@ -14,37 +14,90 @@
   }
 
   body {
-    @apply bg-navy-950 text-ink-200 font-sans antialiased;
+    @apply bg-canvas text-ink font-sans antialiased;
+    /* Editorial body copy: comfortable measure, quiet weight. */
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Focus ring for keyboard accessibility */
+  /* Visible, high-contrast focus on a white canvas. */
   :focus-visible {
-    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-navy-950;
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-canvas;
+  }
+
+  ::selection {
+    background: #d9e2ff;
+  }
+
+  /* Motion is functional. When the user asks for less, honour it globally —
+     including the intro — rather than relying on each component to remember. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
+  /* Surfaces are defined by hairlines and spacing, not shadows. */
   .card {
-    @apply rounded-xl border border-white/5 bg-navy-850 p-5 shadow-card;
+    @apply rounded-xl border border-line bg-canvas p-5;
+  }
+
+  .panel {
+    @apply rounded-xl border border-line bg-surface p-5;
+  }
+
+  .hairline {
+    @apply border-b border-line;
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium
+      transition-[background-color,border-color,color,transform] duration-150
+      disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn:not(:disabled):active {
+    transform: translateY(0.5px);
   }
 
   .btn-primary {
-    @apply btn bg-accent text-white hover:bg-accent-deep;
+    @apply btn bg-accent text-white hover:bg-accent-hover;
   }
 
   .btn-ghost {
-    @apply btn border border-white/10 bg-white/0 text-ink-200 hover:bg-white/5;
+    @apply btn border border-line bg-canvas text-ink hover:bg-surface;
+  }
+
+  .btn-quiet {
+    @apply btn bg-transparent px-2.5 py-1.5 text-ink-secondary hover:bg-surface hover:text-ink;
   }
 
   .btn-danger {
-    @apply btn bg-bad/90 text-white hover:bg-bad;
+    @apply btn border border-critical/25 bg-canvas text-critical hover:bg-critical/5;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-ink-300;
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas
+      px-2.5 py-1 text-xs font-medium text-ink-secondary;
+  }
+
+  /* Editorial display treatment reserved for the product name and screen titles. */
+  .display {
+    @apply font-semibold tracking-editorial text-ink;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted;
+  }
+
+  .numeric {
+    font-variant-numeric: tabular-nums;
   }
 }

@@ -4,49 +4,68 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Enterprise dark-navy palette (original, not copied from any brand)
-        navy: {
-          950: '#070b18',
-          900: '#0b1122',
-          850: '#0f1730',
-          800: '#141d3b',
-          700: '#1c294f',
-          600: '#263466',
-        },
+        // Editorial light system. One accent, no gradients, hierarchy from
+        // type and hairline borders rather than shadows or fills.
+        canvas: '#FFFFFF',
+        surface: '#F7F7F5',
+        line: '#EAEAEA',
         ink: {
-          100: '#eef2ff',
-          200: '#cdd6f4',
-          300: '#9aa7cf',
-          400: '#6b78a1',
+          DEFAULT: '#111111',
+          secondary: '#666666',
+          muted: '#8A8A8A',
         },
         accent: {
-          DEFAULT: '#4f8cff',
-          soft: '#6ea0ff',
-          deep: '#2f6ae0',
+          DEFAULT: '#315CFF',
+          hover: '#2447D8',
+          wash: '#F0F3FF',
         },
-        good: '#34d399',
-        warn: '#fbbf24',
-        bad: '#f87171',
+        positive: '#15835B',
+        caution: '#B66A08',
+        critical: '#C73E3E',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'Segoe UI', 'Roboto', 'sans-serif'],
+        // System stack only — nothing to download, nothing to license.
+        sans: [
+          'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI',
+          'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif',
+        ],
       },
-      boxShadow: {
-        card: '0 1px 0 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.6)',
+      letterSpacing: {
+        editorial: '-0.03em',
       },
       keyframes: {
-        'fade-in': {
-          '0%': { opacity: '0', transform: 'translateY(4px)' },
+        'rise-in': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'turn-in': {
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'pulse-soft': {
           '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.5' },
+          '50%': { opacity: '0.45' },
+        },
+        // The interface "grows" out of the wordmark as the letters disperse.
+        'app-reveal': {
+          '0%': { opacity: '0', transform: 'scale(0.985)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'intro-letter': {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'ambient-drift': {
+          '0%': { transform: 'translateX(-40%)' },
+          '100%': { transform: 'translateX(140%)' },
         },
       },
       animation: {
-        'fade-in': 'fade-in 0.25s ease-out',
-        'pulse-soft': 'pulse-soft 1.6s ease-in-out infinite',
+        'rise-in': 'rise-in 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
+        'turn-in': 'turn-in 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
+        'pulse-soft': 'pulse-soft 1.8s ease-in-out infinite',
+        'app-reveal': 'app-reveal 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+        'ambient-drift': 'ambient-drift 2.2s ease-in-out infinite',
       },
     },
   },

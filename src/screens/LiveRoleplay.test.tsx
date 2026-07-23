@@ -123,11 +123,11 @@ describe('LiveRoleplay — speech input integration', () => {
 });
 
 describe('LiveRoleplay — live scoring UI', () => {
-  // The Overall value lives in the tile whose label is "Overall".
+  // The live score now reads as a single "Conversation health" indicator
+  // rather than one tile among six equal metric bars.
   function overallTileValue(): string {
-    const tile = screen.getByText('Overall').parentElement as HTMLElement;
-    // The value is the large number in the same tile.
-    return within(tile).getByText(/^\d+$/).textContent ?? '';
+    const block = screen.getByText('Conversation health').parentElement as HTMLElement;
+    return within(block).getByText(/^\d+$/).textContent ?? '';
   }
 
   it('shows Objection Handling as "Not yet assessed" before any objection', async () => {
@@ -150,8 +150,8 @@ describe('LiveRoleplay — live scoring UI', () => {
   it('renders brief feedback and a recommended next move', async () => {
     const state = await runEngine(['How are you currently training your new reps?']);
     renderLive(state);
-    expect(screen.getByText(/Coaching:/)).toBeInTheDocument();
-    expect(screen.getByText(/Next move:/)).toBeInTheDocument();
+    expect(screen.getByText('Coaching')).toBeInTheDocument();
+    expect(screen.getByText('Next move')).toBeInTheDocument();
     expect(screen.getByText(/Good discovery question/i)).toBeInTheDocument();
   });
 
@@ -167,7 +167,7 @@ describe('LiveRoleplay — live scoring UI', () => {
   it('renders an accessible score trend chart', async () => {
     const state = await runEngine(['How do you currently onboard reps?']);
     renderLive(state);
-    const img = screen.getByRole('img');
+    const img = screen.getByRole('img', { name: /score trend/i });
     expect(img.getAttribute('aria-label')).toMatch(/score trend/i);
   });
 });

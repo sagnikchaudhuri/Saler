@@ -15,14 +15,14 @@ export function VoiceControls({ voice }: { voice: UseVoiceOutput }) {
       : null;
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
       {/* Which voice the user is ACTUALLY hearing. */}
       <Badge tone={voice.providerName === 'Silent Mode' ? 'neutral' : 'accent'}>
         {voice.providerName}
       </Badge>
 
       {/* State is text, never colour alone. */}
-      <span className="inline-flex items-center gap-1.5 text-xs text-ink-300" aria-live="polite">
+      <span className="inline-flex items-center gap-1.5 text-xs text-ink-secondary" aria-live="polite">
         {(voice.isSpeaking || voice.isPreparing) && (
           <span
             aria-hidden
@@ -65,7 +65,7 @@ export function VoiceControls({ voice }: { voice: UseVoiceOutput }) {
       </button>
 
       {voice.warning && (
-        <p role="status" className="w-full text-xs text-warn">
+        <p role="status" className="w-full text-xs text-caution">
           {voice.warning}
         </p>
       )}

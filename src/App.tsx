@@ -11,6 +11,9 @@ import { sessionRepository } from './persistence/repository';
 import type { StoredSession } from './persistence/types';
 import { createMediaCoordinator } from './media/MediaCoordinator';
 import { useVoiceOutput } from './hooks/useVoiceOutput';
+import { SalerIntro } from './components/SalerIntro';
+import { hasSeenIntro } from './components/introSession';
+import { createSpeechProvider } from './speech/provider';
 
 // Stable config reference so the engine/hook don't recreate every render.
 const CONVO_CONFIG: CreateProviderConfig = { demoDelayMs: 500 };
@@ -20,10 +23,22 @@ const CONVO_CONFIG: CreateProviderConfig = { demoDelayMs: 500 };
 // double-invokes initializers, which would silently swallow the warning.
 const STARTUP_RECOVERY_WARNING = sessionRepository.consumeRecoveryWarning();
 
+// Capability read once at module load. `isSupported()` only checks for the
+// browser API — it never requests microphone permission.
+const SPEECH_SUPPORTED = createSpeechProvider().supported;
+
+// Whether the intro has already played this session, resolved before first
+// paint so it can never replay on navigation or a StrictMode double-mount.
+const INTRO_ALREADY_SEEN = hasSeenIntro();
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('briefing');
   // A session opened from history (viewed read-only, no new roleplay started).
   const [historySession, setHistorySession] = useState<StoredSession | null>(null);
+  // Intro is presentation only: it overlays an app that is already mounted and
+  // interactive, and starts no requests, speech, voice, or persistence.
+  const [introVisible, setIntroVisible] = useState(!INTRO_ALREADY_SEEN);
+  const [revealing, setRevealing] = useState(false);
   const convo = useConversation(CONVO_CONFIG);
   const { status } = convo.state;
   const { start } = convo;
@@ -101,8 +116,23 @@ export default function App() {
   const reportSession = historySession ?? convo.state.completedSession;
 
   return (
-    <Layout screen={screen} onNavigate={handleNavigate} demoMode={convo.state.demoMode}>
-      {screen === 'briefing' && <ScenarioBriefing onStart={goToRoleplay} />}
+    <>
+      {introVisible && (
+        <SalerIntro
+          onReveal={() => setRevealing(true)}
+          onDone={() => setIntroVisible(false)}
+        />
+      )}
+      <div className={revealing ? 'animate-app-reveal' : undefined}>
+        <Layout screen={screen} onNavigate={handleNavigate} demoMode={convo.state.demoMode}>
+          {screen === 'briefing' && (
+            <ScenarioBriefing
+              onStart={goToRoleplay}
+              speechSupported={SPEECH_SUPPORTED}
+              voiceProviderName={voice.providerName}
+              aiEnabled={convo.aiEnabled}
+            />
+          )}
       {screen === 'roleplay' && (
         <LiveRoleplay
           state={convo.state}
@@ -127,13 +157,15 @@ export default function App() {
           onStart={goToRoleplay}
         />
       )}
-      {screen === 'history' && (
-        <SessionHistory
-          onOpen={openHistorySession}
-          onStart={goToRoleplay}
-          recoveryWarning={STARTUP_RECOVERY_WARNING}
-        />
-      )}
-    </Layout>
+          {screen === 'history' && (
+            <SessionHistory
+              onOpen={openHistorySession}
+              onStart={goToRoleplay}
+              recoveryWarning={STARTUP_RECOVERY_WARNING}
+            />
+          )}
+        </Layout>
+      </div>
+    </>
   );
 }

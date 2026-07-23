@@ -6,7 +6,7 @@ describe('App shell', () => {
   it('renders the scenario briefing by default', () => {
     render(<App />);
     expect(
-      screen.getByRole('heading', { name: /Sell to Rohan Mehta/i }),
+      screen.getByRole('heading', { name: /Rohan Mehta/i }),
     ).toBeInTheDocument();
   });
 
@@ -17,7 +17,7 @@ describe('App shell', () => {
 
   it('navigates from briefing to the live call', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: /Start Call/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Start roleplay/i }));
     expect(screen.getByText(/End Call/i)).toBeInTheDocument();
   });
 });

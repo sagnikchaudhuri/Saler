@@ -1,4 +1,4 @@
-import { Card, StatTile, ScoreBar, Badge } from '../components/ui';
+import { StatTile, ScoreBar, Badge, Disclosure } from '../components/ui';
 import { ScoreTrend } from '../components/ScoreTrend';
 import type { SalesStage, TranscriptTurn } from '../types';
 import type { StoredSession } from '../persistence/types';
@@ -55,69 +55,53 @@ export function FinalReport({
 }) {
   if (!session) {
     return (
-      <Card>
-        <div className="grid place-items-center gap-3 py-12 text-center">
-          <div className="text-3xl" aria-hidden>📊</div>
-          <p className="text-sm text-ink-300">
-            No report yet. Complete a call to see your coaching summary.
-          </p>
-          <button type="button" className="btn-primary" onClick={onStart}>
-            Start a Call
-          </button>
-        </div>
-      </Card>
+      <div className="mx-auto max-w-2xl py-16 text-center">
+        <p className="eyebrow">Report</p>
+        <h1 className="display mt-4 text-3xl">No report yet</h1>
+        <p className="mt-3 text-ink-secondary">
+          Complete a call and your coaching summary will appear here.
+        </p>
+        <button type="button" className="btn-primary mt-8" onClick={onStart}>
+          Start a Call
+        </button>
+      </div>
     );
   }
 
   const r = session.finalReport;
   const diff = r.overall_score - session.liveAverage;
   const diffLabel = diff > 0 ? `+${diff}` : String(diff);
-  const diffTone = diff > 0 ? 'good' : diff < 0 ? 'bad' : 'neutral';
   const objectionRaised = session.objectionsRaised.length > 0;
   const limitedEvidence = session.sellerTurnCount <= 2;
   const trend = session.scoreHistory.map((h) => h.visibleOverall);
 
   return (
-    <div className="space-y-6">
-      {/* Header + actions */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase tracking-widest text-accent-soft">
-              Coaching Report
-            </span>
-            {session.demoMode && <Badge tone="warn">Demo Mode</Badge>}
-          </div>
-          <h1 className="mt-1 text-2xl font-semibold text-ink-100">Call Summary</h1>
-          <p className="mt-1 text-sm text-ink-400">
-            {new Date(session.date).toLocaleString()} · {formatDuration(session.durationMs)} ·{' '}
-            {session.sellerTurnCount} seller turn{session.sellerTurnCount === 1 ? '' : 's'} ·
-            reached {STAGE_LABEL[session.finalStage]}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="btn-ghost" onClick={onBriefing}>
-            Back to Briefing
-          </button>
-          <button type="button" className="btn-ghost" onClick={onHistory}>
-            Session History
-          </button>
-          <button type="button" className="btn-primary" onClick={onReplay}>
-            Try Again
-          </button>
-        </div>
+    <article className="mx-auto max-w-3xl animate-rise-in">
+      <p className="eyebrow">Session complete</p>
+
+      {/* Lead with the coaching, not the numbers. */}
+      <h1 className="display mt-4 text-3xl leading-snug sm:text-4xl">{r.summary}</h1>
+
+      <p className="mt-5 text-sm text-ink-muted">
+        {new Date(session.date).toLocaleString()} · {formatDuration(session.durationMs)} ·{' '}
+        {session.sellerTurnCount} seller turn{session.sellerTurnCount === 1 ? '' : 's'} · reached{' '}
+        {STAGE_LABEL[session.finalStage]}
+      </p>
+
+      <div className="mt-6 flex flex-wrap gap-2">
+        {session.demoMode && <Badge>Demo Mode</Badge>}
       </div>
 
       {limitedEvidence && (
-        <div role="status" className="rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+        <p role="status" className="mt-6 rounded-lg bg-caution/5 p-3 text-sm text-caution">
           Limited evidence: this call had {session.sellerTurnCount} seller turn
           {session.sellerTurnCount === 1 ? '' : 's'}, so these findings are
           indicative rather than conclusive.
-        </div>
+        </p>
       )}
 
       {session.fallbackWarnings.length > 0 && (
-        <div role="status" className="rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
+        <div role="status" className="mt-4 rounded-lg bg-caution/5 p-3 text-sm text-caution">
           <div className="font-medium">Evaluation notices</div>
           <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs">
             {session.fallbackWarnings.map((w, i) => (
@@ -127,35 +111,54 @@ export function FinalReport({
         </div>
       )}
 
-      {/* Headline scores */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* Only now, the score. */}
+      <div className="mt-10 grid grid-cols-3 gap-6 border-y border-line py-6">
         <StatTile label="Final Score" value={r.overall_score} hint="whole conversation" />
         <StatTile label="Live Average" value={session.liveAverage} hint="turn by turn" />
-        <StatTile
-          label="Difference"
-          value={
-            <span className={diffTone === 'good' ? 'text-good' : diffTone === 'bad' ? 'text-bad' : 'text-ink-200'}>
-              {diffLabel}
-            </span>
-          }
-          hint="final vs live"
-        />
+        <StatTile label="Difference" value={diffLabel} hint="final vs live" />
       </div>
 
-      {/* Live vs final explanation */}
-      <Card title="Live vs Final Scoring">
-        <p className="text-sm text-ink-100">{buildComparison(session.liveAverage, r.overall_score)}</p>
-        <p className="mt-2 text-xs text-ink-400">{LIVE_VS_FINAL_NOTE}</p>
-      </Card>
+      {/* The two moments that matter most. */}
+      <section className="mt-10 space-y-8">
+        <div>
+          <h2 className="eyebrow text-positive">Strongest moment</h2>
+          <Quote text={r.strongest_statement} />
+        </div>
+        <div>
+          <h2 className="eyebrow text-caution">Biggest missed opportunity</h2>
+          <Quote text={r.weakest_statement} />
+          <div className="mt-4 rounded-lg bg-accent-wash p-4">
+            <div className="eyebrow text-accent">A stronger alternative</div>
+            <p className="mt-2 leading-relaxed text-ink">{r.better_response}</p>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card title="Category Scores" className="lg:col-span-2">
-          <div className="grid gap-3 sm:grid-cols-2">
+      <section className="mt-10 rounded-xl border border-line p-5">
+        <h2 className="text-sm font-semibold text-ink">Practise this next</h2>
+        <p className="mt-2 leading-relaxed text-ink-secondary">{r.recommended_practice}</p>
+      </section>
+
+      {/* Everything below is available, but folded away by default. */}
+      <div className="mt-10">
+        <Disclosure summary="Live vs Final Scoring">
+          <p className="text-sm leading-relaxed text-ink">
+            {buildComparison(session.liveAverage, r.overall_score)}
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-ink-muted">{LIVE_VS_FINAL_NOTE}</p>
+          <div className="mt-5">
+            <div className="eyebrow mb-2">Score progression</div>
+            <ScoreTrend values={trend} />
+          </div>
+        </Disclosure>
+
+        <Disclosure summary="Category scores">
+          <div className="grid gap-4 sm:grid-cols-2">
             {CATEGORY_LABELS.map(([key, label]) => {
               if (key === 'objection_handling' && !objectionRaised) {
                 return (
-                  <div key={key} className="flex items-center justify-between text-xs">
-                    <span className="text-ink-300">{label}</span>
+                  <div key={key} className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="text-ink-secondary">{label}</span>
                     <Badge>Not applicable</Badge>
                   </div>
                 );
@@ -164,155 +167,133 @@ export function FinalReport({
             })}
           </div>
           {!objectionRaised && (
-            <p className="mt-3 text-[11px] text-ink-400">
+            <p className="mt-4 text-xs leading-relaxed text-ink-muted">
               No objection was raised, so Objection Handling is excluded from the
               final score rather than counted against you.
             </p>
           )}
-        </Card>
+        </Disclosure>
 
-        <Card title="Score Progression" className="lg:col-span-1">
-          <ScoreTrend values={trend} />
-        </Card>
-
-        <Card title="Strengths" className="lg:col-span-1">
-          <ul className="space-y-2 text-sm text-ink-200">
-            {r.strengths.map((t, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span aria-hidden className="mt-1 text-good">✓</span>
-                {t}
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Card title="Missed Opportunities" className="lg:col-span-1">
-          <ul className="space-y-2 text-sm text-ink-200">
-            {r.missed_opportunities.map((t, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span aria-hidden className="mt-1 text-warn">!</span>
-                {t}
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        <Card title="Recommended Practice" className="lg:col-span-1">
-          <p className="text-sm text-ink-100">{r.recommended_practice}</p>
-        </Card>
-
-        <Card title="Key Moments" className="lg:col-span-2">
-          <div className="space-y-3 text-sm">
-            <Moment tone="good" label="Strongest statement" text={r.strongest_statement} />
-            <Moment tone="bad" label="Weakest statement" text={r.weakest_statement} />
-            <div className="rounded-lg border border-accent/20 bg-accent/5 p-3">
-              <div className="text-xs uppercase tracking-wide text-ink-400">
-                A stronger alternative
-              </div>
-              <p className="mt-1 text-ink-100">{r.better_response}</p>
+        <Disclosure summary="What worked, and what didn't">
+          <div className="grid gap-8 sm:grid-cols-2">
+            <div>
+              <div className="eyebrow text-positive">Strengths</div>
+              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink-secondary">
+                {r.strengths.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="eyebrow text-caution">Missed opportunities</div>
+              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink-secondary">
+                {r.missed_opportunities.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
             </div>
           </div>
-        </Card>
+        </Disclosure>
 
-        <Card title="Objection Analysis" className="lg:col-span-1">
+        <Disclosure summary="Objection analysis">
           {r.objection_results.length === 0 ? (
-            <p className="text-sm text-ink-400">
+            <p className="text-sm text-ink-secondary">
               Rohan never raised an objection in this call.
             </p>
           ) : (
-            <ul className="space-y-3 text-sm">
+            <ul className="space-y-4">
               {r.objection_results.map((o, i) => (
-                <li key={i} className="rounded-lg border border-white/5 bg-navy-900/60 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-ink-100">{o.objection}</span>
-                    {o.handled ? <Badge tone="good">Handled</Badge> : <Badge tone="bad">Not handled</Badge>}
+                <li key={i}>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-sm font-medium text-ink">{o.objection}</span>
+                    {o.handled ? (
+                      <Badge tone="good">Handled</Badge>
+                    ) : (
+                      <Badge tone="bad">Not handled</Badge>
+                    )}
                   </div>
-                  <p className="mt-1 text-xs text-ink-400">{o.explanation}</p>
+                  <p className="mt-1 text-sm text-ink-secondary">{o.explanation}</p>
                 </li>
               ))}
             </ul>
           )}
-        </Card>
+        </Disclosure>
 
-        <Card title="Missed Discovery Questions" className="lg:col-span-3">
+        <Disclosure summary="Discovery gaps">
           {r.missed_discovery_questions.length === 0 ? (
-            <p className="text-sm text-ink-300">
+            <p className="text-sm text-ink-secondary">
               Strong coverage — no major discovery areas were missed.
             </p>
           ) : (
-            <ul className="grid gap-2 text-sm text-ink-200 sm:grid-cols-2">
+            <ul className="space-y-2 text-sm leading-relaxed text-ink-secondary">
               {r.missed_discovery_questions.map((q, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span aria-hidden className="mt-1 text-accent-soft">?</span>
-                  {q}
-                </li>
+                <li key={i}>{q}</li>
               ))}
             </ul>
           )}
-        </Card>
+        </Disclosure>
 
-        <Card title="Summary" className="lg:col-span-3">
-          <p className="text-sm text-ink-100">{r.summary}</p>
-        </Card>
+        <Disclosure summary={`Show the ${session.transcript.length}-message transcript`}>
+          <div className="space-y-5">
+            {session.transcript.map((t) => (
+              <TranscriptLine key={t.id} turn={t} />
+            ))}
+          </div>
+        </Disclosure>
 
-        {/* Collapsible transcript */}
-        <Card title="Full Transcript" className="lg:col-span-3">
-          <details>
-            <summary className="cursor-pointer text-xs text-ink-400 marker:text-ink-400">
-              Show the {session.transcript.length}-message transcript
-            </summary>
-            <div className="mt-3 space-y-2">
-              {session.transcript.map((t) => (
-                <TranscriptLine key={t.id} turn={t} />
-              ))}
-            </div>
-          </details>
-        </Card>
-
-        {/* Session metadata / provider status */}
-        <Card title="Session Details" className="lg:col-span-3">
-          <dl className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+        <Disclosure summary="Session details">
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <Meta label="Scenario" value={session.scenarioId} />
             <Meta label="Session ID" value={session.id} />
-            <Meta label="Schema version" value={String(session.schemaVersion)} />
             <Meta label="Customer" value={MODE_LABEL[session.providerModes?.customer ?? 'demo']} />
-            <Meta label="Turn evaluation" value={MODE_LABEL[session.providerModes?.turnEvaluator ?? 'demo']} />
-            <Meta label="Final review" value={MODE_LABEL[session.providerModes?.finalReport ?? 'demo']} />
+            <Meta
+              label="Turn evaluation"
+              value={MODE_LABEL[session.providerModes?.turnEvaluator ?? 'demo']}
+            />
+            <Meta
+              label="Final review"
+              value={MODE_LABEL[session.providerModes?.finalReport ?? 'demo']}
+            />
+            <Meta label="Schema version" value={String(session.schemaVersion)} />
           </dl>
-        </Card>
+        </Disclosure>
       </div>
-    </div>
+
+      <div className="mt-12 flex flex-wrap gap-3 border-t border-line pt-8">
+        <button type="button" className="btn-primary" onClick={onReplay}>
+          Try Again
+        </button>
+        <button type="button" className="btn-ghost" onClick={onBriefing}>
+          Back to Briefing
+        </button>
+        <button type="button" className="btn-ghost" onClick={onHistory}>
+          Session History
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function Quote({ text }: { text: string }) {
+  if (!text) {
+    return (
+      <p className="mt-3 text-ink-muted">Not enough evidence in this call.</p>
+    );
+  }
+  return (
+    <blockquote className="mt-3 border-l-2 border-line pl-5 text-xl leading-relaxed text-ink">
+      “{text}”
+    </blockquote>
   );
 }
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-3 rounded-lg border border-white/5 bg-navy-900/60 px-3 py-2">
-      <dt className="text-ink-400">{label}</dt>
-      <dd className="truncate text-right text-ink-200" title={value}>{value}</dd>
-    </div>
-  );
-}
-
-function Moment({
-  tone,
-  label,
-  text,
-}: {
-  tone: 'good' | 'bad';
-  label: string;
-  text: string;
-}) {
-  return (
-    <div
-      className={`rounded-lg border p-3 ${
-        tone === 'good' ? 'border-good/20 bg-good/5' : 'border-bad/20 bg-bad/5'
-      }`}
-    >
-      <div className="text-xs uppercase tracking-wide text-ink-400">{label}</div>
-      <p className="mt-1 text-ink-100">
-        {text ? `“${text}”` : 'Not enough evidence in this call.'}
-      </p>
+    <div className="flex justify-between gap-3 border-b border-line pb-2">
+      <dt className="text-ink-secondary">{label}</dt>
+      <dd className="truncate text-right text-ink" title={value}>
+        {value}
+      </dd>
     </div>
   );
 }
@@ -320,17 +301,13 @@ function Moment({
 function TranscriptLine({ turn }: { turn: TranscriptTurn }) {
   const isSeller = turn.speaker === 'seller';
   return (
-    <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-          isSeller ? 'rounded-br-sm bg-accent/15 text-ink-100' : 'rounded-bl-sm bg-white/5 text-ink-200'
-        }`}
-      >
-        <div className="mb-0.5 text-[11px] uppercase tracking-wide text-ink-400">
-          {isSeller ? 'You' : SALES_SCENARIO.customer.name}
-        </div>
-        {turn.message}
+    <div>
+      <div className={`eyebrow mb-1 ${isSeller ? 'text-accent' : 'text-ink-muted'}`}>
+        {isSeller ? 'You' : SALES_SCENARIO.customer.name}
       </div>
+      <p className={`leading-relaxed ${isSeller ? 'pl-4 text-ink-secondary' : 'text-ink'}`}>
+        {turn.message}
+      </p>
     </div>
   );
 }
