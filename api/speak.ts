@@ -98,6 +98,8 @@ export default async function handler(
       apiKey: process.env.ELEVENLABS_API_KEY,
       voiceId: process.env.ELEVENLABS_VOICE_ID,
       fetchImpl: fetch,
+      // Numeric status only — no key, no upstream body.
+      onUpstreamStatus: (status) => console.warn(`[api/speak] upstream responded ${status}`),
     },
   );
 

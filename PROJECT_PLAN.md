@@ -360,18 +360,39 @@ cannot take precedence (confirmed: the two values differ).
 - [ ] Persistence tests (save/read/delete/corrupt)
 - [ ] Checks + commit
 
-## Phase 8 — Documentation & deployment prep  `[ ]`
-- [ ] README.md
-- [ ] docs/INTERVIEW_GUIDE.md
-- [ ] docs/DEMO_SCRIPT.md
-- [ ] Vercel config + serverless routes verified
-- [ ] **[!] Manual: you configure Vercel project + env vars**
+## Phase 8 — Visual transformation  `[x]`
+- [x] White editorial system, single #315CFF accent (committed 5e3945c)
+- [x] SALER intro overlay, transcript-first roleplay, narrative report
 
-## Phase 9 — Strict final audit  `[ ]`
-- [ ] typecheck · lint · unit tests · production build all green
-- [ ] Secret scan before final commit
-- [ ] Demo Mode verified working end-to-end
-- [ ] Honest limitations documented
+## Phase 9 — Deployment preparation & docs  `[~]`
+- [x] Pre-deployment audit (git clean, scripts, adapters, routes, env)
+- [x] Fixed stale `.env.example` (removed unread LLM_PROVIDER/LLM_API_KEY)
+- [x] `vercel.json` — SPA rewrite excluding `/api`
+- [x] Node engine pinned (>=20); restored safe production upstream diagnostics
+- [x] README.md, docs/INTERVIEW_GUIDE.md, docs/DEMO_SCRIPT.md
+- [x] typecheck · lint · tests (409) · build all green
+- [x] Secret scan: tracked source + built bundle clean
+- [ ] **[!] Manual: create GitHub repo + import to Vercel (no CLI/remote here)**
+- [ ] Production smoke test (after your deploy)
+
+### Deployment architecture
+- Static Vite build → `dist/`; each `api/*.ts` becomes a Vercel serverless
+  function; `vercel.json` rewrites non-`/api` paths to `index.html` so refresh
+  never 404s. Client calls same-origin `/api/*` only.
+- Dev middleware and Vercel adapters share the handlers in `src/server/`, so
+  local and production behave identically (prod adds only a body cap + rate
+  limit).
+- All five env vars are server-side and OPTIONAL; the app deploys and runs in
+  Demo Mode with none set. No `VITE_` secret; no client `import.meta.env`.
+
+### Required-vs-optional environment classification
+| Variable | Class |
+| --- | --- |
+| `OPENAI_API_KEY` | Optional enhancement — deterministic fallback |
+| `OPENAI_BASE_URL` | Optional — defaults to OpenAI |
+| `LLM_MODEL` | Optional — defaults to gpt-4o-mini |
+| `ELEVENLABS_API_KEY` | Optional enhancement — browser/silent fallback |
+| `ELEVENLABS_VOICE_ID` | Optional — required only alongside the key |
 
 ---
 
