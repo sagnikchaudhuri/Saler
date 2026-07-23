@@ -199,12 +199,50 @@
       voice toggle, no playback on report/history/refresh, no audio persisted
 - [x] **[!] Manual: ElevenLabs API key added locally (verified by existence only)**
 
-### Phase 6b — ElevenLabs provider + secure route  `[ ]`
-- [ ] **[!] Manual: choose and add ELEVENLABS_VOICE_ID**
-- [ ] `POST /api/speak` serverless route (key server-side only, never `VITE_`)
-- [ ] ElevenLabsVoiceProvider (calls only the local route)
-- [ ] Upstream error mapping (401 / 429 quota / timeout / non-audio)
-- [ ] Server-route tests with mocked upstream
+### Phase 6b — ElevenLabs provider + secure route  `[x]`
+- [x] **[!] Manual: ELEVENLABS_VOICE_ID added (verified by existence only)**
+- [x] `POST /api/speak` serverless route (key server-side only, never `VITE_`)
+- [x] Core handler is framework-agnostic; Vercel adapter + Vite dev middleware
+      share it, so local and production behaviour match
+- [x] ElevenLabsVoiceProvider (calls only `/api/speak`, never sees a key)
+- [x] Upstream mapping: 402/429 → quota, 401/403 → auth, 503 → configuration,
+      non-audio / empty → invalid response, abort/timeout → safe error
+- [x] Best-effort in-memory rate limiting (20/min per caller)
+- [x] Server-route tests with mocked upstream (22) + provider tests (17)
+- [x] 356 tests · typecheck ✅ · lint ✅ · build ✅
+- [x] Secret scan: no key, no `xi-api-key`, no `api.elevenlabs.io` in the bundle
+
+### Architecture note — secure voice route (Phase 6b)
+- **The browser never holds a credential.** `ElevenLabsVoiceProvider` posts
+  `{ text }` to our own `/api/speak`; only the server reads
+  `ELEVENLABS_API_KEY`. Verified by scanning the built bundle.
+- **Voice ID is server-side configuration**, not a client input, so a caller
+  cannot point the route at an arbitrary voice. A missing key *or* missing
+  voice ID returns the same generic `VOICE_NOT_CONFIGURED` — the response never
+  reveals which value is absent.
+- **Upstream bodies are never forwarded or logged.** Only a numeric upstream
+  status is exposed to a server-side diagnostic hook.
+- **Request hardening:** POST only, JSON only, trimmed text, 600-character cap,
+  64 KB body cap, 15s upstream timeout, and best-effort rate limiting.
+- **Non-streaming by design:** one request → one audio blob → one playback.
+  Object URLs are revoked on every exit path (success, failure, cancel).
+- **Self-disabling:** on 503/401 the provider marks itself unavailable for the
+  session so the app stops calling a route that cannot work. A 402/429 quota
+  error does **not** disable it — quota can be restored mid-session.
+
+#### Verification status — actual vs mocked (honest)
+- **Verified against the real ElevenLabs API:** the route reaches ElevenLabs
+  and the credential is accepted end-to-end. The upstream returned **HTTP 402
+  (out of credits)**, which proves the key and endpoint are valid (a bad key
+  returns 401; a bad voice ID returns 404).
+- **NOT verified:** actual ElevenLabs audio playback, because the account has
+  no remaining credits. No ElevenLabs audio has ever been heard from this app.
+- **Verified live in-browser:** the full three-step fallback
+  (ElevenLabs 402 → Browser voice → Silent Mode), the honest "Silent Mode"
+  label plus its notice, one utterance per new customer turn, no playback on
+  End Call, and every request-validation guard (405/400/413/415).
+- **Mocked only:** ElevenLabs success path, 401/429/timeout/non-audio handling,
+  object-URL revocation, autoplay rejection, and cancellation.
 
 ### Architecture note — voice output (Phase 6a)
 - **Provider chain.** Production order is **ElevenLabs → Browser voice →

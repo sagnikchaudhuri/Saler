@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useVoiceOutput } from './useVoiceOutput';
 import { MockVoiceProvider } from '../voice/testing/MockVoiceProvider';
+import { SilentVoiceProvider } from '../voice/SilentVoiceProvider';
+import { FallbackVoiceProvider } from '../voice/FallbackVoiceProvider';
 import { VoiceProviderError } from '../voice/errors';
 import { createMediaCoordinator } from '../media/MediaCoordinator';
 import type { TranscriptTurn } from '../types';
@@ -132,6 +134,37 @@ describe('useVoiceOutput — autoplay and failure', () => {
     await act(async () => { result.current.retryLast(); });
     // Dedup does not block an explicit retry.
     expect(provider.spokenTexts).toHaveLength(2);
+  });
+
+  it('explains Silent Mode even though speak() succeeded', async () => {
+    // The chain resolves silently: honest labelling requires a notice.
+    const silent = new SilentVoiceProvider();
+    const coordinator = createMediaCoordinator();
+    const { result } = renderHook(() =>
+      useVoiceOutput({ coordinator, provider: silent, isLiveCall: true }),
+    );
+    await act(async () => { result.current.speakCustomerTurn(turn('t1')); });
+
+    expect(result.current.providerName).toBe('Silent Mode');
+    expect(result.current.warning).toMatch(/still available in the transcript/i);
+  });
+
+  it('says so when a downgrade to the browser voice occurred', async () => {
+    const premium = new MockVoiceProvider({
+      name: 'ElevenLabs Voice',
+      failWith: new VoiceProviderError('quota', 'quota'),
+    });
+    const browser = new MockVoiceProvider({ name: 'Browser Voice', autoComplete: true });
+    const chain = new FallbackVoiceProvider([premium, browser]);
+    const coordinator = createMediaCoordinator();
+
+    const { result } = renderHook(() =>
+      useVoiceOutput({ coordinator, provider: chain, isLiveCall: true }),
+    );
+    await act(async () => { result.current.speakCustomerTurn(turn('t1')); });
+
+    expect(result.current.providerName).toBe('Browser Voice');
+    expect(result.current.warning).toMatch(/browser’s built-in voice|browser's built-in voice/i);
   });
 
   it('shows a non-blocking notice when every provider fails', async () => {

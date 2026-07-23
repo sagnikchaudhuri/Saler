@@ -1,15 +1,18 @@
 import { BrowserSpeechSynthesisProvider } from './BrowserSpeechSynthesisProvider';
 import { SilentVoiceProvider } from './SilentVoiceProvider';
 import { FallbackVoiceProvider } from './FallbackVoiceProvider';
+import { ElevenLabsVoiceProvider } from './ElevenLabsVoiceProvider';
 import type { VoiceProvider } from './types';
 
 export interface CreateVoiceProviderConfig {
   /**
-   * Optional premium provider to try FIRST (ElevenLabs). Supplied only once a
-   * server voice route is configured; until then the chain starts at the
-   * browser voice. MockVoiceProvider is test-only and is never used here.
+   * Override the premium provider (tests). By default the real
+   * ElevenLabsVoiceProvider is used, which talks only to our secure
+   * `/api/speak` route. MockVoiceProvider is test-only and never used here.
    */
   primary?: VoiceProvider;
+  /** Set false to skip the premium provider entirely. */
+  enablePremium?: boolean;
 }
 
 /**
@@ -26,7 +29,9 @@ export function createVoiceProvider(
   config: CreateVoiceProviderConfig = {},
 ): FallbackVoiceProvider {
   const chain: VoiceProvider[] = [];
-  if (config.primary) chain.push(config.primary);
+  if (config.enablePremium !== false) {
+    chain.push(config.primary ?? new ElevenLabsVoiceProvider());
+  }
   chain.push(new BrowserSpeechSynthesisProvider());
   chain.push(new SilentVoiceProvider());
   return new FallbackVoiceProvider(chain);

@@ -103,8 +103,20 @@ export function useVoiceOutput(options: UseVoiceOutputOptions): UseVoiceOutput {
 
       try {
         await provider.speak(turn.message, { turnId: turn.id });
-        // Be honest when the premium voice was not the one used.
-        setProviderName(provider.getName());
+        // Be honest about what the user actually heard. A successful call can
+        // still mean a downgrade happened (or that nothing was audible at all).
+        const name = provider.getName();
+        setProviderName(name);
+        const downgraded = (
+          provider as Partial<{ getFallbackReason: () => unknown }>
+        ).getFallbackReason?.();
+        if (name === 'Silent Mode') {
+          setWarning(VOICE_MESSAGES.silent);
+        } else if (downgraded) {
+          setWarning(VOICE_MESSAGES.fellBackToBrowser);
+        } else {
+          setWarning(null);
+        }
       } catch (err) {
         setProviderName(provider.getName());
         if (err instanceof VoiceProviderError && err.reason === 'autoplay-blocked') {
