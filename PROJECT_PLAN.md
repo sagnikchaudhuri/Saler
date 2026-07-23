@@ -76,12 +76,61 @@
   generation: the evaluator scores the exact pre-reply state, avoiding races.
   Evaluator output is never fed to the customer persona (no coaching leak).
 
-## Phase 4 — Final report & session history  `[ ]`
-- [ ] Transcript evaluator (final pass)
-- [ ] Final report screen (all required fields)
-- [ ] localStorage persistence (save/read/delete/corrupt recovery)
-- [ ] Session history screen
-- [ ] Tests + checks + commit
+## Phase 4 — Final report & session history  `[x]`
+- [x] FinalEvaluatorProvider abstraction (Demo + LLM, identical interface)
+- [x] LLM final evaluator disabled until a secure endpoint exists
+- [x] Deterministic final transcript evaluator (7 categories, documented weights)
+- [x] Strict schema validation + safe fallback + non-blocking warning
+- [x] Live-vs-final comparison (score, difference, deterministic explanation)
+- [x] Strongest/weakest statements are always real transcript entries
+- [x] Objection analysis with a documented handled rule; only raised objections
+- [x] Missed discovery questions from genuine gaps only
+- [x] Recommended practice targeted at the weakest area
+- [x] Short-call handling (0/1/2 turns) without fake precision
+- [x] Versioned localStorage repository (save/list/get/delete/clearAll)
+- [x] Corrupted-storage recovery, migration-ready versioning, 25-session retention
+- [x] End Call flow: evaluate → validate → fallback → build → persist → display
+- [x] Duplicate-save prevention (idempotent by id + ref guard)
+- [x] Full report UI + session history UI; all placeholder labelling removed
+- [x] Tests (179 total): final evaluator, persistence, end-call integration, UI
+- [x] Checks: typecheck ✅ · lint ✅ · tests ✅ (179) · build ✅
+- [x] Browser-verified all 15 steps (short call → multi-turn → history → corruption)
+
+### Architecture note — final report & persistence (Phase 4)
+- **Live vs final evaluation.** Live scoring rates each turn *incrementally* as
+  the call unfolds (signals → deterministic deltas → smoothed visible score).
+  Final scoring judges the conversation *as a whole* — discovery coverage,
+  progression, objection outcomes, and whether a next step was earned. They
+  answer different questions, so they legitimately differ; the report shows
+  both plus a deterministic explanation of the gap.
+- **Deterministic final score.** Seven category scores are computed from
+  evidence (per-turn signals in the score history + transcript facts), never
+  copied from the final live metrics. Overall = weighted blend:
+  discovery .22, problem identification .18, value articulation .15,
+  objection handling .15, opening .10, clarity .10, closing .10 (sum 1.0).
+  When no objection was raised, objection handling is **excluded** and its
+  weight redistributed proportionally, so a clean call is never penalised for
+  a dimension that never became relevant.
+- **Objection-handled rule.** Behaviour is attributed to the correct objection
+  using the seller turns between when it was raised and the next objection.
+  *Strongly handled* = acknowledged + clarified + answered + confirmed;
+  *handled* = answered AND (acknowledged OR clarified); *not handled* =
+  ignored or never answered. Objections that were never raised are never
+  listed and never marked failed.
+- **Session schema & versioning.** Stored records carry `schemaVersion`
+  (currently 1). On read, each record passes through `migrate()`; unknown or
+  newer versions are dropped rather than misread, leaving a clear hook for
+  real migrations later.
+- **Corrupted-storage recovery.** Unparseable JSON resets storage to `[]` and
+  surfaces a one-shot warning; individually malformed records are skipped
+  while good ones survive. The app never crashes on bad storage.
+- **Only completed sessions persist.** An in-progress call has no final report
+  and would pollute history with half-finished rows, so the session is built
+  and saved only at End Call.
+- **Fallback reports prevent data loss.** If the final evaluator throws or
+  returns an invalid shape, a grounded fallback (based on the live average) is
+  substituted, a warning is stored and displayed, and the session is still
+  saved — the transcript and score history are never lost.
 
 ## Phase 5 — Browser speech input  `[ ]`
 - [ ] SpeechRecognition / webkitSpeechRecognition wrapper

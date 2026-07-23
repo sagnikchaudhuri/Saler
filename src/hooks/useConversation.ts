@@ -1,15 +1,20 @@
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { SALES_SCENARIO } from '../data/scenario';
 import { ConversationEngine, type ConversationEngineState } from '../conversation/engine';
 import { createConversationProvider, type CreateProviderConfig } from '../conversation/provider';
 import { createEvaluatorProvider } from '../evaluation/provider';
-import { buildDemoReport, type DemoReport } from '../conversation/report';
+import { createFinalEvaluatorProvider } from '../final/provider';
+import { sessionRepository } from '../persistence/repository';
 
 function createEngine(config: CreateProviderConfig): ConversationEngine {
   const { provider, demoMode } = createConversationProvider(config);
-  // The evaluator is chosen independently of the conversation provider, but in
-  // Phase 3 both fall back to their deterministic Demo implementations.
+  // Each provider is selected independently; in Demo Mode all three fall back
+  // to their deterministic implementations.
   const { provider: evaluator } = createEvaluatorProvider({
+    llmEnabled: config.llmEnabled,
+    llmEndpoint: config.llmEndpoint,
+  });
+  const { provider: finalEvaluator } = createFinalEvaluatorProvider({
     llmEnabled: config.llmEnabled,
     llmEndpoint: config.llmEndpoint,
   });
@@ -17,6 +22,7 @@ function createEngine(config: CreateProviderConfig): ConversationEngine {
     provider,
     { scenarioId: SALES_SCENARIO.id, demoMode },
     evaluator,
+    finalEvaluator,
   );
 }
 
@@ -24,7 +30,7 @@ export interface UseConversation {
   state: ConversationEngineState;
   providerName: string;
   evaluatorName: string;
-  report: DemoReport | null;
+  finalEvaluatorName: string;
   start: () => void;
   submit: (text: string) => void;
   endCall: () => void;
@@ -33,11 +39,11 @@ export interface UseConversation {
 }
 
 /**
- * React binding for the ConversationEngine. Uses useSyncExternalStore so the
- * component re-renders on every engine state change without extra effects.
+ * React binding for the ConversationEngine. Also owns the single side effect
+ * that persists a completed session through the repository — guarded by a ref
+ * so repeated renders or End Call clicks can never save duplicates.
  */
 export function useConversation(config: CreateProviderConfig = {}): UseConversation {
-  // A version counter lets `reset()` swap in a fresh engine and force a resubscribe.
   const [version, setVersion] = useState(0);
   const engineRef = useRef<ConversationEngine | null>(null);
   if (engineRef.current === null) {
@@ -47,20 +53,24 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
 
   const subscribe = useCallback(
     (cb: () => void) => engine.subscribe(cb),
-    // Re-subscribe when the engine instance changes (after reset).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [engine, version],
   );
   const state = useSyncExternalStore(subscribe, () => engine.getState());
 
-  const report = useMemo(
-    () => (state.status === 'Completed' ? buildDemoReport(state) : null),
-    [state],
-  );
+  // Persist exactly once per completed session.
+  const savedIds = useRef<Set<string>>(new Set());
+  const session = state.completedSession;
+  useEffect(() => {
+    if (!session) return;
+    if (savedIds.current.has(session.id)) return;
+    savedIds.current.add(session.id);
+    sessionRepository.save(session);
+  }, [session]);
 
   const start = useCallback(() => engine.start(), [engine]);
   const submit = useCallback((text: string) => void engine.submitSeller(text), [engine]);
-  const endCall = useCallback(() => engine.endCall(), [engine]);
+  const endCall = useCallback(() => void engine.endCall(), [engine]);
   const retry = useCallback(() => engine.retry(), [engine]);
   const reset = useCallback(() => {
     engineRef.current = createEngine(config);
@@ -71,7 +81,7 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
     state,
     providerName: engine.getProviderName(),
     evaluatorName: engine.getEvaluatorName(),
-    report,
+    finalEvaluatorName: engine.getFinalEvaluatorName(),
     start,
     submit,
     endCall,

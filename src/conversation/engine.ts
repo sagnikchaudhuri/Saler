@@ -7,7 +7,7 @@ import type {
   ObjectionKey,
   ProviderReply,
 } from './types';
-import { createInitialMemory } from './types';
+import { createInitialMemory, OBJECTIONS } from './types';
 import { updateCustomerMemory } from './persona';
 import { InvalidProviderResponseError } from './errors';
 import type { EvaluationContext, RealTimeEvaluatorProvider } from '../evaluation/types';
@@ -15,6 +15,16 @@ import { DemoRealTimeEvaluatorProvider } from '../evaluation/DemoRealTimeEvaluat
 import { validateEvaluatorResult, safeFallbackResult } from '../evaluation/validate';
 import type { ScoreState } from '../scoring/types';
 import { createInitialScoreState, applyEvaluation } from '../scoring/session';
+import type {
+  FinalEvaluationContext,
+  FinalEvaluatorProvider,
+  FinalReport,
+  ObjectionEvent,
+} from '../final/types';
+import { DemoFinalEvaluatorProvider } from '../final/DemoFinalEvaluatorProvider';
+import { validateFinalReport, safeFinalFallback } from '../final/validate';
+import type { StoredSession } from '../persistence/types';
+import { SESSION_SCHEMA_VERSION } from '../persistence/types';
 
 /** Maximum characters accepted from the seller in one turn. */
 export const MAX_INPUT_LENGTH = 1000;
@@ -39,6 +49,12 @@ export interface ConversationEngineState {
   scoreState: ScoreState;
   /** Non-blocking warning shown when the evaluator fell back for a turn. */
   evaluatorWarning: string | null;
+  /** Final post-call report (populated on End Call). */
+  finalReport: FinalReport | null;
+  /** Average visible overall across the call (populated on End Call). */
+  liveAverage: number | null;
+  /** The completed, persistable session (populated on End Call). */
+  completedSession: StoredSession | null;
 }
 
 export interface EngineOptions {
@@ -87,15 +103,22 @@ export class ConversationEngine {
   private readonly listeners = new Set<Listener>();
   private readonly now: () => number;
   private readonly evaluator: RealTimeEvaluatorProvider;
+  private readonly finalEvaluator: FinalEvaluatorProvider;
   private idCounter = 0;
+  /** When each objection was raised (for final objection analysis). */
+  private objectionEvents: ObjectionEvent[] = [];
+  /** Fallback warnings accumulated across the whole call, saved with session. */
+  private sessionWarnings: string[] = [];
 
   constructor(
     private readonly provider: ConversationProvider,
     private readonly options: EngineOptions,
     evaluator?: RealTimeEvaluatorProvider,
+    finalEvaluator?: FinalEvaluatorProvider,
   ) {
     this.now = options.now ?? Date.now;
     this.evaluator = evaluator ?? new DemoRealTimeEvaluatorProvider();
+    this.finalEvaluator = finalEvaluator ?? new DemoFinalEvaluatorProvider();
     this.state = {
       status: 'Idle',
       transcript: [],
@@ -110,6 +133,9 @@ export class ConversationEngine {
       demoMode: options.demoMode,
       scoreState: createInitialScoreState(),
       evaluatorWarning: null,
+      finalReport: null,
+      liveAverage: null,
+      completedSession: null,
     };
   }
 
@@ -123,6 +149,10 @@ export class ConversationEngine {
 
   getEvaluatorName(): string {
     return this.evaluator.getName();
+  }
+
+  getFinalEvaluatorName(): string {
+    return this.finalEvaluator.getName();
   }
 
   subscribe(listener: Listener): () => void {
@@ -272,6 +302,8 @@ export class ConversationEngine {
       warning = 'Evaluation is temporarily unavailable; scoring was skipped for this turn.';
     }
 
+    if (warning) this.sessionWarnings.push(`Turn ${previousSellerMessages.length + 1}: ${warning}`);
+
     const sellerTurnNumber = previousSellerMessages.length + 1;
     const scoreState = applyEvaluation(this.state.scoreState, result, {
       sellerTurn: sellerTurnNumber,
@@ -296,6 +328,16 @@ export class ConversationEngine {
     const customerTurn = this.makeTurn('customer', reply.message, nextStage);
     const memory = updateCustomerMemory(this.state.memory, sellerMessage, reply);
 
+    // Record WHEN each objection was raised so the final evaluator can
+    // attribute the seller's later acknowledge/clarify/answer/confirm turns
+    // to the correct objection.
+    if (reply.raisedObjection && objectionsRaised !== this.state.objectionsRaised) {
+      this.objectionEvents.push({
+        key: reply.raisedObjection,
+        turnRaised: memory.sellerTurns,
+      });
+    }
+
     this.setState({
       transcript: [...this.state.transcript, customerTurn],
       memory,
@@ -311,9 +353,111 @@ export class ConversationEngine {
     this.setState({ status: 'WaitingForSeller', error: null });
   }
 
-  /** End the call. Transitions to Completed. */
-  endCall(): void {
+  /**
+   * End the call and produce the final report + completed session.
+   *
+   * Sequence: stop accepting input (status Completed blocks submitSeller) →
+   * mark completed → run the final evaluator → validate → fall back if needed
+   * → compute the live average → build the completed session.
+   *
+   * Persisting the session is deliberately NOT done here: the engine stays
+   * storage-agnostic and the hook writes it through the repository. Calling
+   * endCall twice is a no-op, so repeated clicks cannot duplicate a session.
+   */
+  async endCall(): Promise<void> {
     if (this.state.status === 'Completed') return;
-    this.setState({ status: 'Completed', endedAt: this.now() });
+
+    const endedAt = this.now();
+    const startedAt = this.state.startedAt ?? endedAt;
+    this.setState({ status: 'Completed', endedAt });
+
+    const sellerMessages = this.state.transcript
+      .filter((t) => t.speaker === 'seller')
+      .map((t) => t.message);
+    const history = this.state.scoreState.history;
+
+    // Live average across the call. With no scored turns, fall back to the
+    // initial visible score rather than inventing a number.
+    const liveAverage =
+      history.length > 0
+        ? Math.round(history.reduce((sum, h) => sum + h.visibleOverall, 0) / history.length)
+        : this.state.scoreState.visibleOverall;
+
+    const finalCtx: FinalEvaluationContext = {
+      transcript: this.state.transcript,
+      sellerMessages,
+      scoreHistory: history,
+      objectionEvents: this.objectionEvents,
+      addressedObjections: this.state.memory.addressedObjections,
+      finalStage: this.state.stage,
+      durationMs: Math.max(0, endedAt - startedAt),
+      liveAverage,
+      agreedToNextStep: this.state.agreedToNextStep,
+      sellerTurnCount: sellerMessages.length,
+    };
+
+    let finalReport: FinalReport;
+    let finalWarning: string | null = null;
+    try {
+      const raw = await this.finalEvaluator.evaluate(finalCtx);
+      const validated = validateFinalReport(raw, {
+        sellerMessages: new Set(sellerMessages),
+        raisedObjectionLabels: new Set(this.objectionEvents.map((e) => OBJECTIONS[e.key])),
+      });
+      if (validated.ok && validated.value) {
+        finalReport = validated.value;
+      } else {
+        finalReport = safeFinalFallback(finalCtx);
+        finalWarning =
+          'The final evaluation was invalid, so a safe summary based on your live scores is shown instead.';
+      }
+    } catch {
+      finalReport = safeFinalFallback(finalCtx);
+      finalWarning =
+        'The final evaluation was unavailable, so a safe summary based on your live scores is shown instead.';
+    }
+
+    const fallbackWarnings = finalWarning
+      ? [...this.sessionWarnings, finalWarning]
+      : [...this.sessionWarnings];
+
+    const completedSession: StoredSession = {
+      id: makeSessionId(startedAt, endedAt),
+      schemaVersion: SESSION_SCHEMA_VERSION,
+      date: new Date(endedAt).toISOString(),
+      startTime: startedAt,
+      endTime: endedAt,
+      durationMs: finalCtx.durationMs,
+      scenarioId: this.options.scenarioId,
+      providerNames: {
+        conversation: this.provider.getName(),
+        realtimeEvaluator: this.evaluator.getName(),
+        finalEvaluator: this.finalEvaluator.getName(),
+      },
+      demoMode: this.state.demoMode,
+      transcript: this.state.transcript,
+      finalStage: this.state.stage,
+      objectionsRaised: this.state.objectionsRaised,
+      addressedObjections: this.state.memory.addressedObjections,
+      scoreHistory: history,
+      liveAverage,
+      finalReport,
+      fallbackWarnings,
+      sellerTurnCount: sellerMessages.length,
+    };
+
+    this.setState({ finalReport, liveAverage, completedSession });
   }
+}
+
+/** Unique-enough session id. Randomness here is fine (not part of scoring). */
+function makeSessionId(startedAt: number, endedAt: number): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // fall through
+  }
+  return `sess-${startedAt}-${endedAt}`;
 }
