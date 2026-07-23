@@ -138,6 +138,27 @@ describe('/api/conversation', () => {
     expect(JSON.stringify(r.body)).not.toMatch(/Incorrect API key/i);
   });
 
+  it('reports only the short upstream error code to the server diagnostic', async () => {
+    // Observed live: OpenAI returns 429 + insufficient_quota when a project
+    // has no credit. The code must reach the operator, never the browser.
+    const codes: string[] = [];
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: 'You exceeded your quota, key sk-secret', code: 'insufficient_quota' } }),
+        { status: 429, headers: { 'content-type': 'application/json' } },
+      ),
+    ) as unknown as typeof fetch;
+
+    const r = await handleConversationRequest(
+      post({ sellerMessage: 'hi' }),
+      cfg(fetchImpl, { onUpstreamErrorCode: (c: string) => codes.push(c) }),
+    );
+
+    expect(codes).toEqual(['insufficient_quota']);
+    // The upstream message (and anything in it) never reaches the client.
+    expect(JSON.stringify(r.body)).not.toMatch(/quota|sk-secret/i);
+  });
+
   it('maps a rate limit to 429', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('slow down', { status: 429 })) as unknown as typeof fetch;
     expect((await handleConversationRequest(post({ sellerMessage: 'hi' }), cfg(fetchImpl))).status).toBe(429);

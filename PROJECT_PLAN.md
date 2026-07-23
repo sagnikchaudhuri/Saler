@@ -314,19 +314,44 @@
   displays them.
 
 #### Verification status — actual vs mocked (honest)
-- **Not verified against a live model.** No production LLM call was made. An
-  `OPENAI_API_KEY` exists in the shell environment, but it was not configured
-  by the user for this project, so it was deliberately **not spent**.
-- **Verified live in-browser (no credits used):** `/api/ai-status` reporting
-  correctly; every validation guard (405/400/413) on all three routes; a full
-  turn with the AI routes failing → deterministic fallback, honest "Demo"
-  labels, a capability warning, and the call continuing; End Call producing a
-  session at schema v2 with `providerModes` and fallback warnings recorded;
-  and a full AI-success path with mocked routes showing "AI Customer" /
-  "AI Evaluation" labels while the deterministic engine still set the score
-  (Discovery 40→50 from signals alone).
+
+**Live attempt made with the user's project key (2026-07-23).** The key was
+loaded specifically from this project's `.env.local` — `vite.config.ts` now
+re-reads that file *after* `loadEnv` so a same-named ambient shell variable
+cannot take precedence (confirmed: the two values differ).
+
+- **Live AI generation: NOT VERIFIED.** Every request was rejected upstream
+  with **HTTP 429 / `insufficient_quota`** — the OpenAI project has no
+  available credit. **3 live attempts total**, all rejected at the quota gate,
+  so **no tokens were billed**. Latency of a rejected call: ~0.3–1.6 s.
+  This is consistent with a valid key on an account without credit, but key
+  validity is **not asserted as proven** (provider validation order is not
+  guaranteed).
+- **Therefore unverified against a real model:** Rohan's in-character
+  behaviour, reply conciseness, absence of coaching, natural objection
+  emergence, live signal quality, and final-report quoting.
+- **Verified live, in-browser, with zero credits consumed:**
+  - `/api/ai-status` correctly reports configuration state.
+  - Every validation guard (405 / 400 / 413) on all three AI routes, rejecting
+    before any upstream call.
+  - Real upstream failure → **per-capability deterministic fallback**: the call
+    continued, the scripted persona replied, deterministic scoring ran
+    (Discovery 40→50), coaching text appeared, and a capability warning was
+    shown. Provider labels switched honestly to "Demo".
+  - **Exactly one** `/api/conversation` and **one** `/api/evaluate-turn`
+    request per seller turn, and one `/api/evaluate-final` per completed call —
+    no duplicates on re-render, no retry storms.
+  - Session persisted at **schema v2** with `providerModes` and fallback
+    warnings; no prompts or secrets in stored sessions.
+  - Server-side diagnostic surfaced only the short error code
+    (`insufficient_quota`) — never the upstream message or the key.
+  - A full **AI-success path with mocked routes**: labels read "AI Customer" /
+    "AI Evaluation", AI coaching text rendered, and the **deterministic engine
+    still set the score** from signals alone.
 - **Mocked only:** all upstream model behaviour — success payloads, auth
   failure, rate limiting, timeouts, malformed JSON, and schema violations.
+- **To complete live verification:** add credit to the OpenAI project. No code
+  change is required; the AI providers are already first in every chain.
 
 ## Phase 7b — Testing & resilience  `[ ]`
 - [ ] Scoring tests (all cases)

@@ -41,6 +41,13 @@ export interface LlmConfig {
   timeoutMs?: number;
   /** Server-side diagnostic: receives ONLY a numeric status. */
   onUpstreamStatus?: (status: number) => void;
+  /**
+   * Server-side diagnostic receiving ONLY the provider's short error
+   * classification (e.g. "insufficient_quota", "rate_limit_exceeded"). Never
+   * the message, never the key, and never forwarded to the browser. Lets an
+   * operator tell "out of credit" from "too fast" without leaking anything.
+   */
+  onUpstreamErrorCode?: (code: string) => void;
 }
 
 export interface LlmRequest {
@@ -130,6 +137,18 @@ export async function callLlmJson(
 
   if (!response.ok) {
     config.onUpstreamStatus?.(response.status);
+    // Extract ONLY the short error classification for server-side diagnosis.
+    if (config.onUpstreamErrorCode) {
+      try {
+        const body: unknown = await response.json();
+        const e = (body as { error?: { code?: unknown; type?: unknown } })?.error;
+        const code = typeof e?.code === 'string' ? e.code : typeof e?.type === 'string' ? e.type : 'unknown';
+        // Guard against a provider echoing something unexpected/large.
+        config.onUpstreamErrorCode(code.slice(0, 40));
+      } catch {
+        config.onUpstreamErrorCode('unreadable');
+      }
+    }
     if (response.status === 401 || response.status === 403) throw new LlmError('auth');
     if (response.status === 402 || response.status === 429) throw new LlmError('quota');
     throw new LlmError('network');

@@ -1,5 +1,7 @@
 import { defineConfig, type Plugin } from 'vitest/config';
 import { loadEnv } from 'vite';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { handleSpeakRequest } from './src/server/speak';
 import {
@@ -80,6 +82,7 @@ function devAiRoutes(env: Record<string, string>): Plugin {
     model: env.LLM_MODEL,
     fetchImpl: fetch,
     onUpstreamStatus: (status) => console.warn(`[api/ai] upstream responded ${status}`),
+    onUpstreamErrorCode: (code) => console.warn(`[api/ai] upstream error code: ${code}`),
   });
 
   const routes: Record<string, (req: AiRequestLike, c: LlmConfig) => Promise<JsonResult>> = {
@@ -132,10 +135,49 @@ function devAiRoutes(env: Record<string, string>): Plugin {
   };
 }
 
+/**
+ * Parse a dotenv file into key/value pairs.
+ *
+ * Vite's own loadEnv lets `process.env` OVERRIDE values from .env files. For
+ * project credentials that is the wrong precedence: a key that happens to be
+ * present in the ambient shell would silently win over the one the developer
+ * deliberately put in this project's .env.local. So we re-read the file and
+ * give it the final say. Values are never logged or returned to the client.
+ */
+function readEnvFile(dir: string, name: string): Record<string, string> {
+  const path = resolve(dir, name);
+  if (!existsSync(path)) return {};
+  const out: Record<string, string> = {};
+  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    // Strip matching surrounding quotes.
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (value.length > 0) out[key] = value;
+  }
+  return out;
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  // Loads .env.local etc. Server-side use only — never spread into `define`.
-  const env = loadEnv(mode, process.cwd(), '');
+  const cwd = process.cwd();
+  // Server-side use only — never spread into `define`.
+  // .env.local is applied LAST so this project's own credentials take
+  // precedence over anything already present in the ambient shell.
+  const env = {
+    ...loadEnv(mode, cwd, ''),
+    ...readEnvFile(cwd, '.env'),
+    ...readEnvFile(cwd, '.env.local'),
+  };
 
   return {
     plugins: [react(), devSpeakApi(env), devAiRoutes(env)],
