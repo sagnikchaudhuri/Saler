@@ -181,14 +181,57 @@
   will not require reworking microphone logic (this prevents the mic hearing
   the customer's own voice).
 
-## Phase 6 — ElevenLabs secure voice integration  `[ ]`
-- [ ] VoiceProvider interface + Mock + BrowserSpeechSynthesis providers
-- [ ] Server-side ElevenLabs endpoint (key server-only, never VITE_)
-- [ ] ElevenLabsVoiceProvider (client calls server)
-- [ ] Quota-exhausted / failure graceful fallback
-- [ ] Stop playback control
-- [ ] Checks + commit
-- [ ] **[!] Manual: you create ElevenLabs account + add key to server env**
+## Phase 6 — ElevenLabs secure voice integration  `[~]`
+
+### Phase 6a — voice output foundation (no key required)  `[x]`
+- [x] VoiceProvider contract + VoiceState
+- [x] BrowserSpeechSynthesisProvider (fallback)
+- [x] SilentVoiceProvider (terminal fallback, always available)
+- [x] MockVoiceProvider — test-only, never in the production chain
+- [x] FallbackVoiceProvider orchestration + factory
+- [x] MediaCoordinator + extended coordination (input/output exclusivity)
+- [x] useVoiceOutput hook with turn-id deduplication
+- [x] Voice UI: provider badge, preparing/speaking, Stop Speaking, Voice toggle,
+      manual play after autoplay block, fallback warning
+- [x] Tests (313 total) · typecheck ✅ · lint ✅ · build ✅
+- [x] Secret scan of source **and built bundle** — no key present
+- [x] Browser-verified: browser-voice fallback, one utterance per new turn,
+      voice toggle, no playback on report/history/refresh, no audio persisted
+- [x] **[!] Manual: ElevenLabs API key added locally (verified by existence only)**
+
+### Phase 6b — ElevenLabs provider + secure route  `[ ]`
+- [ ] **[!] Manual: choose and add ELEVENLABS_VOICE_ID**
+- [ ] `POST /api/speak` serverless route (key server-side only, never `VITE_`)
+- [ ] ElevenLabsVoiceProvider (calls only the local route)
+- [ ] Upstream error mapping (401 / 429 quota / timeout / non-audio)
+- [ ] Server-route tests with mocked upstream
+
+### Architecture note — voice output (Phase 6a)
+- **Provider chain.** Production order is **ElevenLabs → Browser voice →
+  Silent Mode**. `SilentVoiceProvider` is always available and always last, so
+  `speak()` can never leave the roleplay broken. `MockVoiceProvider` lives in
+  `src/voice/testing/` and is never imported by the factory.
+- **One attempt per provider per utterance** — no retry storms. The UI shows
+  the provider that *actually* spoke, so a fallback is never misreported as
+  ElevenLabs.
+- **Turn deduplication.** Playback is keyed by transcript **turn id**, marked
+  *before* the async call. Re-renders, StrictMode double-invocation, remounts,
+  navigation, refresh, and viewing history therefore cannot replay a turn.
+  `isLiveCall` additionally gates out briefing, report, history, completed
+  calls, and hydrated transcripts.
+- **Media exclusivity.** `computeMediaActivity()` is the single source of truth:
+  the mic cannot start while audio is preparing/playing, and output cannot
+  start while recognition is active. `MediaCoordinator` brokers the two — voice
+  output asks the *speech controller* to stop, so no component touches another
+  component's browser APIs.
+- **Autoplay.** A blocked autoplay is not a failure: the reply stays visible,
+  a "Play customer response" button appears, and nothing auto-retries.
+- **Privacy/secrets.** No audio is stored, no object URL persisted, nothing
+  audio-related enters saved sessions. The key is server-side only and never
+  appears in client source or the built bundle (scanned).
+- **Verification status.** Browser voice and Silent Mode were verified in a
+  real browser. **Actual ElevenLabs playback is not yet implemented or
+  verified** — it lands in Phase 6b once a voice ID is configured.
 
 ## Phase 7 — Testing & resilience  `[ ]`
 - [ ] Scoring tests (all cases)

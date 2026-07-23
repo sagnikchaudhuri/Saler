@@ -6,6 +6,7 @@ import type {
   SpeechRecognitionState,
 } from '../speech/types';
 import { computeMediaActivity, type MediaActivity } from '../media/coordination';
+import type { MediaCoordinator } from '../media/MediaCoordinator';
 
 /**
  * Join recognised text onto the existing draft without destroying anything the
@@ -24,10 +25,15 @@ export interface UseSpeechInputOptions {
   provider?: SpeechRecognitionProvider;
   /** True when the conversation is ready for seller input. */
   conversationAcceptsInput: boolean;
-  /** Phase 6 hooks — customer audio playback state. */
+  /** Customer audio playback state — blocks the mic while audio is active. */
   isOutputSpeaking?: boolean;
   isOutputPreparing?: boolean;
   lang?: string;
+  /**
+   * Broker that lets voice output stop recognition through THIS controller,
+   * rather than another component touching browser APIs directly.
+   */
+  coordinator?: MediaCoordinator;
 }
 
 export interface UseSpeechInput {
@@ -64,6 +70,7 @@ export function useSpeechInput(options: UseSpeechInputOptions): UseSpeechInput {
     isOutputSpeaking,
     isOutputPreparing,
     lang,
+    coordinator,
   } = options;
 
   const providerRef = useRef<SpeechRecognitionProvider | null>(null);
@@ -109,6 +116,18 @@ export function useSpeechInput(options: UseSpeechInputOptions): UseSpeechInput {
   useEffect(() => {
     if (!conversationAcceptsInput && isListening) provider.abort();
   }, [conversationAcceptsInput, isListening, provider]);
+
+  // Expose stop/isActive to the coordinator so voice output can close the mic
+  // through this controller instead of reaching for browser APIs itself.
+  const isListeningRef = useRef(isListening);
+  isListeningRef.current = isListening;
+  useEffect(() => {
+    if (!coordinator) return;
+    return coordinator.registerRecognition({
+      stop: () => provider.abort(),
+      isActive: () => isListeningRef.current,
+    });
+  }, [coordinator, provider]);
 
   const media = useMemo(
     () =>

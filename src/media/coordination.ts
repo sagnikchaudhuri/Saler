@@ -10,7 +10,12 @@
 export interface MediaActivity {
   isListening: boolean;
   isOutputSpeaking: boolean;
+  isOutputPreparing: boolean;
   canStartListening: boolean;
+  /** Whether customer audio may begin right now. */
+  canStartOutput: boolean;
+  /** Output wants to start but recognition must be stopped first. */
+  mustStopRecognitionForOutput: boolean;
 }
 
 export interface MediaActivityInput {
@@ -26,6 +31,8 @@ export interface MediaActivityInput {
   speechSupported: boolean;
   /** Permission was denied/blocked — do not re-prompt. */
   permissionBlocked: boolean;
+  /** The user's voice-output toggle. Defaults to enabled. */
+  voiceEnabled?: boolean;
 }
 
 /**
@@ -36,7 +43,9 @@ export interface MediaActivityInput {
 export function computeMediaActivity(input: MediaActivityInput): MediaActivity {
   const isOutputSpeaking = input.isOutputSpeaking ?? false;
   const isOutputPreparing = input.isOutputPreparing ?? false;
+  const voiceEnabled = input.voiceEnabled ?? true;
 
+  // Input side: never listen while output is preparing or playing.
   const canStartListening =
     input.speechSupported &&
     !input.permissionBlocked &&
@@ -45,9 +54,17 @@ export function computeMediaActivity(input: MediaActivityInput): MediaActivity {
     !isOutputPreparing &&
     input.conversationAcceptsInput;
 
+  // Output side: never speak over an open microphone. Recognition must be
+  // stopped through the speech controller first — hence the explicit flag.
+  const canStartOutput =
+    voiceEnabled && !input.isListening && !isOutputSpeaking && !isOutputPreparing;
+
   return {
     isListening: input.isListening,
     isOutputSpeaking,
+    isOutputPreparing,
     canStartListening,
+    canStartOutput,
+    mustStopRecognitionForOutput: voiceEnabled && input.isListening,
   };
 }

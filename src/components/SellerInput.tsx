@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSpeechInput } from '../hooks/useSpeechInput';
 import type { SpeechRecognitionProvider, SpeechRecognitionState } from '../speech/types';
+import type { MediaCoordinator } from '../media/MediaCoordinator';
 import { speechErrorMessage } from '../speech/errors';
 
 const STATUS_TEXT: Record<SpeechRecognitionState, string> = {
@@ -25,16 +26,26 @@ export function SellerInput({
   inputError,
   onSubmit,
   speechProvider,
+  coordinator,
+  isOutputSpeaking,
+  isOutputPreparing,
 }: {
   canSend: boolean;
   inputError: string | null;
   onSubmit: (text: string) => void;
   /** Injectable for tests; defaults to the real browser provider. */
   speechProvider?: SpeechRecognitionProvider;
+  /** Broker for input/output exclusivity. */
+  coordinator?: MediaCoordinator;
+  isOutputSpeaking?: boolean;
+  isOutputPreparing?: boolean;
 }) {
   const speech = useSpeechInput({
     provider: speechProvider,
     conversationAcceptsInput: canSend,
+    coordinator,
+    isOutputSpeaking,
+    isOutputPreparing,
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wasListening = useRef(false);

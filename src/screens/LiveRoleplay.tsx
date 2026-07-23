@@ -3,7 +3,10 @@ import { SALES_SCENARIO } from '../data/scenario';
 import { Card, ScoreBar, Badge, StatTile } from '../components/ui';
 import { ScoreTrend } from '../components/ScoreTrend';
 import { SellerInput } from '../components/SellerInput';
+import { VoiceControls } from '../components/VoiceControls';
 import type { SpeechRecognitionProvider } from '../speech/types';
+import type { MediaCoordinator } from '../media/MediaCoordinator';
+import type { UseVoiceOutput } from '../hooks/useVoiceOutput';
 import type { TranscriptTurn, SalesStage, Scores, Momentum } from '../types';
 import type { ConversationEngineState } from '../conversation/engine';
 
@@ -39,6 +42,8 @@ export function LiveRoleplay({
   onRetry,
   onEndCall,
   speechProvider,
+  coordinator,
+  voice,
 }: {
   state: ConversationEngineState;
   evaluatorName: string;
@@ -47,6 +52,10 @@ export function LiveRoleplay({
   onEndCall: () => void;
   /** Injectable speech provider (tests); defaults to the browser provider. */
   speechProvider?: SpeechRecognitionProvider;
+  /** Broker for microphone/audio exclusivity. */
+  coordinator?: MediaCoordinator;
+  /** Voice-output controller; omitted in tests that don't exercise audio. */
+  voice?: UseVoiceOutput;
 }) {
   const s = SALES_SCENARIO;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -176,7 +185,12 @@ export function LiveRoleplay({
               inputError={state.inputError}
               onSubmit={onSubmit}
               speechProvider={speechProvider}
+              coordinator={coordinator}
+              isOutputSpeaking={voice?.isSpeaking}
+              isOutputPreparing={voice?.isPreparing}
             />
+
+            {voice && <VoiceControls voice={voice} />}
           </Card>
         </div>
 
