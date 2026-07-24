@@ -17,7 +17,7 @@ import { hasSeenIntro } from './components/introSession';
 import { hasEnteredApp, markAppEntered } from './nav/entrySession';
 import { createSpeechProvider } from './speech/provider';
 import { SALES_SCENARIO } from './data/scenario';
-import type { SectionId } from './nav/sections';
+import type { SectionId, NavTarget } from './nav/sections';
 import type { SalerNavPreviews } from './components/SalerNav';
 import type { LogFocus } from './screens/SessionHistory';
 import { customerStatusLabel } from './ai/labels';
@@ -41,6 +41,9 @@ export default function App() {
   const [phase, setPhase] = useState<'home' | 'app'>(() =>
     hasEnteredApp() ? 'app' : 'home',
   );
+  // Whether the one-time dock has already happened. Governs presentation only:
+  // it decides whether the homepage is the first arrival or a return visit.
+  const [entered, setEntered] = useState(() => hasEnteredApp());
   const [historySession, setHistorySession] = useState<StoredSession | null>(null);
   // Which part of a Report Log the user asked to see.
   const [logFocus, setLogFocus] = useState<LogFocus>('evaluation');
@@ -91,10 +94,9 @@ export default function App() {
 
   // --- navigation handlers (state is never reset by navigation) ---
   //
-  // There is deliberately no path back to the homepage: no Home button, no
-  // Escape, and no scroll-up gesture (which also kept the page from ever
-  // hijacking a normal scroll). Leaving mid-call would imply the call had been
-  // discarded, and it hasn't.
+  // Home is the single route back to the landing page. Escape and scroll-up
+  // still do nothing — a gesture that discards your place should not be
+  // something you can trigger by accident.
 
   /** Switch viewpoint. Leaving the call view stops mic + audio, not the engine. */
   const selectSection = (id: SectionId) => {
@@ -107,10 +109,27 @@ export default function App() {
     setPhase('app');
   };
 
-  /** The one-time entrance from the homepage. */
+  /** The one-time entrance from the first-run homepage. */
   const enterSection = (id: SectionId) => {
     markAppEntered();
+    setEntered(true);
     selectSection(id);
+  };
+
+  /**
+   * Back to the landing page. The call is not ended, reset, or unmounted —
+   * only the microphone and any playing audio stop, exactly as when moving to
+   * any other letter. `section` is deliberately left alone so the next letter
+   * press returns to precisely where the user was.
+   */
+  const goHome = () => {
+    coordinator.stopAll();
+    setPhase('home');
+  };
+
+  const handleNavSelect = (id: NavTarget) => {
+    if (id === 'HOME') goHome();
+    else selectSection(id);
   };
 
   /** Begin (or restart) the roleplay — the one place a fresh engine is made. */
@@ -173,8 +192,9 @@ export default function App() {
       <div className={revealing ? 'animate-app-reveal' : undefined}>
         <SalerShell
           phase={phase}
+          entered={entered}
           section={section}
-          onSelect={selectSection}
+          onSelect={handleNavSelect}
           onEnter={enterSection}
           previews={previews}
           demoMode={convo.state.demoMode}

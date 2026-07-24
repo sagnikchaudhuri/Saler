@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import App from './App';
 import { INTRO_SESSION_KEY } from './components/introSession';
 import { ENTRY_SESSION_KEY } from './nav/entrySession';
@@ -26,7 +26,9 @@ describe('App shell', () => {
 
   it('shows the Demo Mode badge', () => {
     render(<App />);
-    expect(screen.getByText(/Demo Mode/i)).toBeInTheDocument();
+    // The badge appears on the homepage and again in the application footer,
+    // which stays mounted (hidden) so the live call survives going Home.
+    expect(screen.getAllByText(/Demo Mode/i).length).toBeGreaterThan(0);
   });
 
   it('enters Scenario and can start the roleplay', () => {
@@ -80,15 +82,12 @@ describe('App — the homepage is an entrance, not a destination', () => {
     expect(screen.getByRole('navigation', { name: /Saler sections/i })).toBeInTheDocument();
   });
 
-  it('offers no route back: no Home control, and Escape does nothing', () => {
+  it('leaves Escape inert — Home is the only way back', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Open Scenario/i }));
 
-    expect(screen.queryByRole('button', { name: /home/i })).toBeNull();
-
-    const letter = screen.getByRole('button', { name: 'Scenario' });
-    fireEvent.keyDown(letter, { key: 'Escape' });
-    // Still inside the application: the homepage letters have not come back.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Home' }), { key: 'Escape' });
+    // Still inside the application: the landing letters have not come back.
     expect(screen.queryByRole('button', { name: /Open Scenario/i })).toBeNull();
     expect(screen.getByRole('navigation', { name: /Saler sections/i })).toBeInTheDocument();
   });
@@ -98,7 +97,7 @@ describe('App — the homepage is an entrance, not a destination', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open Scenario/i }));
     // Every later move uses the compact navbar, never the homepage letters.
     fireEvent.click(screen.getByRole('button', { name: 'Report Logs' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Scenario' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Evaluation' }));
     expect(screen.queryByRole('button', { name: /Open Scenario/i })).toBeNull();
   });
 });
@@ -121,7 +120,6 @@ describe('App — navbar navigation preserves the call', () => {
 
   it('keeps the transcript and an unsent draft when moving A → L → A', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Scenario' }));
     fireEvent.click(screen.getByRole('button', { name: /Start roleplay/i }));
 
     const box = screen.getByRole('textbox', { name: /your response/i });
@@ -140,7 +138,6 @@ describe('App — navbar navigation preserves the call', () => {
 
   it('does not restart the roleplay when returning to Ask from another letter', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Scenario' }));
     fireEvent.click(screen.getByRole('button', { name: /Start roleplay/i }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Report Logs' }));
@@ -149,6 +146,105 @@ describe('App — navbar navigation preserves the call', () => {
     // Back in the same live call, not on the briefing's start button.
     expect(screen.getByText(/End Call/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Start roleplay/i })).toBeNull();
+  });
+});
+
+describe('App — persistent Home', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    skipEntrance();
+    localStorage.clear();
+  });
+
+  it('offers Home as the leading navbar item, named Home and not Scenario', () => {
+    render(<App />);
+    const nav = screen.getByRole('navigation', { name: /Saler sections/i });
+    const letters = within(nav).getAllByRole('button');
+    expect(letters[0]).toHaveAccessibleName('Home');
+    expect(within(nav).queryByRole('button', { name: 'Scenario' })).toBeNull();
+  });
+
+  it('opens the landing page, keeping the navbar and its large letters', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    // The landing layout is back...
+    expect(screen.getByRole('button', { name: /Open Scenario/i })).toBeInTheDocument();
+    // ...and so is the navbar, because Home is persistent.
+    expect(screen.getByRole('navigation', { name: /Saler sections/i })).toBeInTheDocument();
+  });
+
+  it('marks Home as the current destination while on the landing page', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('includes Home in arrow-key navigation', () => {
+    render(<App />);
+    const home = screen.getByRole('button', { name: 'Home' });
+    home.focus();
+    fireEvent.keyDown(home, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Ask — the conversation' }),
+    );
+
+    // And it is reachable by wrapping backwards from the first letter.
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(home);
+  });
+
+  it('does not replay the entrance animation on the way back', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    // Docking dims the content while the letters travel. Returning Home is a
+    // plain change of destination, so nothing is mid-flight.
+    const main = document.querySelector('main');
+    expect(main).not.toHaveClass('opacity-0');
+  });
+
+  it('keeps the live call, its transcript and an unsent draft across Home', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Start roleplay/i }));
+
+    const transcriptBefore = document.querySelector('main')?.textContent ?? '';
+    fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+      target: { value: 'What does onboarding look like today?' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask — the conversation' }));
+
+    expect(screen.getByRole('textbox', { name: /your response/i })).toHaveValue(
+      'What does onboarding look like today?',
+    );
+    expect(screen.getByText(/End Call/i)).toBeInTheDocument();
+    // The same call, not a fresh one: the opening turn is still the same text.
+    expect(document.querySelector('main')?.textContent).toContain(
+      transcriptBefore.slice(0, 40),
+    );
+  });
+
+  it('does not restart the roleplay when coming back from Home', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Start roleplay/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask — the conversation' }));
+
+    // Still in the same call — never returned to the briefing's start button.
+    expect(screen.queryByRole('button', { name: /Start roleplay/i })).toBeNull();
+  });
+
+  it('keeps the section content mounted while Home is showing', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Start roleplay/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    // Hidden, not unmounted — this is what preserves the draft and the call.
+    const main = document.querySelector('main');
+    expect(main).toBeInTheDocument();
+    expect(main).toHaveClass('hidden');
   });
 });
 

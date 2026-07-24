@@ -54,7 +54,7 @@ describe('SalerNav — letters are the navigation', () => {
     const current = screen.getByRole('button', { name: 'Live readings' });
     expect(current).toHaveAttribute('aria-current', 'page');
     // Every other letter must not claim to be current.
-    expect(screen.getByRole('button', { name: 'Scenario' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('button', { name: 'Home' })).not.toHaveAttribute('aria-current');
   });
 });
 

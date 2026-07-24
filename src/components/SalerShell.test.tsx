@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StrictMode } from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { SalerShell } from './SalerShell';
-import type { SectionId } from '../nav/sections';
+import type { SectionId, NavTarget } from '../nav/sections';
 
 function mockReducedMotion(reduce: boolean) {
   vi.stubGlobal(
@@ -20,11 +20,15 @@ function mockReducedMotion(reduce: boolean) {
 function Harness({
   onEnter,
   onSelect,
-}: { onEnter?: (id: SectionId) => void; onSelect?: (id: SectionId) => void } = {}) {
-  return function Wrapper({ initial = 'home' as 'home' | 'app' }) {
+}: { onEnter?: (id: SectionId) => void; onSelect?: (id: NavTarget) => void } = {}) {
+  return function Wrapper({
+    initial = 'home' as 'home' | 'app',
+    entered = false,
+  }: { initial?: 'home' | 'app'; entered?: boolean }) {
     return (
       <SalerShell
         phase={initial}
+        entered={entered}
         section={null}
         onSelect={onSelect ?? vi.fn()}
         onEnter={onEnter ?? vi.fn()}

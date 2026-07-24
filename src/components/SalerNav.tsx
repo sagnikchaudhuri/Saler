@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   SECTIONS,
-  SECTION_ORDER,
+  NAV_ITEMS,
   LETTER_SHADOW,
   type SectionId,
+  type NavTarget,
 } from '../nav/sections';
 import {
   dockScale,
@@ -41,9 +42,9 @@ export function SalerNav({
   transitionMs = 0,
 }: {
   mode: 'home' | 'compact';
-  /** Current section, or null on the homepage where nothing is current yet. */
-  active: SectionId | null;
-  onSelect: (id: SectionId) => void;
+  /** Current destination, or null when nothing in this row is current. */
+  active: NavTarget | null;
+  onSelect: (id: NavTarget) => void;
   previews?: SalerNavPreviews;
   /** Font size of the letters; animated by the shell during the dock. */
   letterSize: string;
@@ -53,6 +54,9 @@ export function SalerNav({
   const containerRef = useRef<HTMLDivElement>(null);
   const isHome = mode === 'home';
   const cfg = isHome ? HOME_DOCK : COMPACT_DOCK;
+  // The homepage offers the five sections; the navbar swaps Scenario's slot
+  // for Home, so the brand mark always leads the row.
+  const items = isHome ? SECTIONS : NAV_ITEMS;
 
   // Continuous position on the letter axis, from pointer or keyboard focus.
   const [focus, setFocus] = useState<number | null>(null);
@@ -80,9 +84,8 @@ export function SalerNav({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const idx = SECTION_ORDER.indexOf(
-      (e.target as HTMLElement)?.getAttribute?.('data-letter') as SectionId,
-    );
+    const target = (e.target as HTMLElement)?.getAttribute?.('data-letter');
+    const idx = items.findIndex((i) => i.id === target);
     if (idx < 0) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -130,10 +133,10 @@ export function SalerNav({
           : 'flex shrink-0 items-end justify-center'
       }
     >
-      {SECTIONS.map((sec, i) => {
+      {items.map((sec, i) => {
         const isActive = sec.id === active;
         const scale = dockScale(i, focus, cfg);
-        const lines = isHome ? (previews?.[sec.id] ?? []) : [];
+        const lines = isHome ? (previews?.[sec.id as SectionId] ?? []) : [];
 
         return (
           <button
@@ -158,8 +161,13 @@ export function SalerNav({
               // horizontal room that stops magnified letters colliding.
               'origin-bottom [transform:scale(var(--dock-s))]',
               '[padding-inline:calc((var(--dock-s)_-_1)_*_var(--dock-pad))]',
-              'transition-[transform,padding,font-size] ease-[cubic-bezier(0.22,1,0.36,1)]',
-              transitionMs > 0 ? '' : '[transition-duration:var(--dock-ms)]',
+              'ease-[cubic-bezier(0.22,1,0.36,1)]',
+              // Letter size only animates during the one-time dock. Outside it
+              // a size change is a mode switch, not a journey, so it lands at
+              // once — that is what keeps returning Home from replaying it.
+              transitionMs > 0
+                ? 'transition-[transform,padding,font-size]'
+                : 'transition-[transform,padding] [transition-duration:var(--dock-ms)]',
               // Homepage letters are widely spaced; the gap also has to clear
               // the section labels beneath them, the longest of which is
               // "Report Logs".
@@ -184,7 +192,7 @@ export function SalerNav({
                   isHome ? 'text-ink/[0.07] blur-[6px]' : 'text-ink/[0.05] blur-[2px]',
                   'group-hover:text-accent/20 group-focus-visible:text-accent/20',
                 ].join(' ')}
-                style={{ transform: LETTER_SHADOW[sec.id] }}
+                style={{ transform: LETTER_SHADOW[sec.id === 'HOME' ? 'S' : sec.id] }}
               >
                 {sec.letter}
               </span>
