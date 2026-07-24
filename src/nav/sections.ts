@@ -22,7 +22,8 @@ export const SECTIONS: SectionDef[] = [
   { id: 'A', letter: 'A', label: 'Ask', name: 'Ask — the conversation' },
   { id: 'L', letter: 'L', label: 'Live', name: 'Live readings' },
   { id: 'E', letter: 'E', label: 'Evaluation', name: 'Evaluation' },
-  { id: 'R', letter: 'R', label: 'Review', name: 'Review and report' },
+  // R is the call-log system: every completed call, kept locally.
+  { id: 'R', letter: 'R', label: 'Report Logs', name: 'Report Logs' },
 ];
 
 export const SECTION_ORDER: SectionId[] = SECTIONS.map((s) => s.id);

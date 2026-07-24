@@ -169,7 +169,7 @@ describe('FinalReport — content & transcript', () => {
     expect(screen.getByText('sess-1')).toBeInTheDocument();
     // Deterministic run must not be labelled as AI.
     expect(screen.getAllByText('Deterministic (Demo)').length).toBe(3);
-    expect(screen.queryByText('Live AI')).toBeNull();
+    expect(screen.queryByText('AI (active)')).toBeNull();
   });
 
   it('labels a live-AI run as AI and a partial fallback as mixed', () => {
@@ -178,7 +178,7 @@ describe('FinalReport — content & transcript', () => {
         providerModes: { customer: 'ai', turnEvaluator: 'mixed', finalReport: 'ai' },
       }),
     );
-    expect(screen.getAllByText('Live AI').length).toBe(2);
+    expect(screen.getAllByText('AI (active)').length).toBe(2);
     expect(screen.getByText(/Mixed — AI with deterministic fallback/)).toBeInTheDocument();
   });
 

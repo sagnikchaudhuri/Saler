@@ -19,12 +19,43 @@ const STOP = new Set([
   'about', 'just', 'like', 'here', 'there', 'been', 'more',
 ]);
 
+/** Crude suffix stripper: enough to align obvious morphological variants. */
+function stem(word: string): string {
+  return word.replace(/(ings|ing|ed|es|s)$/, '');
+}
+
+/**
+ * Domain abbreviations that mean the same thing to a salesperson. Without
+ * this, "reps" and "representatives" look like different topics and a
+ * reworded repeat of the same question slips past the similarity check.
+ */
+const ALIASES: Record<string, string> = {
+  representative: 'rep',
+  representatives: 'rep',
+  // The stemmer strips "es" before "s", so this is the form it actually
+  // produces for "representatives".
+  representativ: 'rep',
+  demonstration: 'demo',
+  demonstrations: 'demo',
+  organisation: 'org',
+  organization: 'org',
+};
+
+/** Alias first on the raw word, then again after stemming. */
+function normalise(word: string): string {
+  const direct = ALIASES[word];
+  if (direct) return direct;
+  const stemmed = stem(word);
+  return ALIASES[stemmed] ?? stemmed;
+}
+
 function tokenize(s: string): string[] {
   return s
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP.has(w));
+    .filter((w) => w.length > 2 && !STOP.has(w))
+    .map(normalise);
 }
 
 function jaccard(a: string, b: string): number {
@@ -52,7 +83,7 @@ const CLOSED_STARTERS = ['do ', 'does ', 'did ', 'is ', 'are ', 'was ', 'were ',
 const CONTEXT_REF = ['you mentioned', 'you said', 'you told', 'you noted', 'as you said', 'like you said', "you're right", 'you already', 'earlier you', 'you pointed out', 'you brought up'];
 const PAIN = ['problem', 'struggle', 'struggl', 'challenge', 'challeng', 'slow', 'difficult', 'bottleneck', 'too long', 'takes long', 'hard to', 'painful', 'pain point', 'issue', 'frustrat', 'ramp-up', 'ramp up', 'not productive', 'lose', 'losing', 'waste', 'inefficien'];
 const PROCESS = ['current', 'currently', 'today', 'right now', 'existing', 'process', 'how do you', 'onboard', 'train', 'ramp'];
-const DECISION = ['who decides', 'decision', 'decision-maker', 'decision maker', 'budget', 'approve', 'approval', 'sign off', 'sign-off', 'stakeholder', 'buying process', 'procurement', 'who else'];
+const DECISION = ['who decides', 'who signs', 'decision', 'decision-maker', 'decision maker', 'budget', 'approve', 'approval', 'sign off', 'signs off', 'sign-off', 'stakeholder', 'buying process', 'procurement', 'who else'];
 const TIMELINE = ['timeline', 'timeframe', 'time frame', 'how soon', 'by when', 'when do you', 'deadline', 'this quarter', 'next quarter'];
 const PITCH = ['our platform', 'our product', 'our solution', 'our ai', 'our tool', 'our software', 'we offer', 'we provide', 'best on the market', 'sign up', 'just buy', 'improve your sales', 'boost your', 'increase your sales'];
 const NEXTSTEP = ['demo', 'demonstration', 'next step', 'schedule', 'set up a', 'book a', 'trial', 'pilot', 'walk you through', 'show you'];
@@ -68,12 +99,39 @@ function startsWithAny(t: string, arr: string[]): boolean {
   return arr.some((p) => t.startsWith(p));
 }
 
+const CLAIM_TERMS = [
+  'guarantee', 'guaranteed', 'no risk', 'risk-free', 'risk free', '100%',
+  'best on the market', 'double your', 'triple your', 'overnight',
+];
+
+/**
+ * Explicit refusals only. Deliberately excludes a bare "no" so that phrases
+ * like "no risk" are not treated as negating themselves.
+ */
+const NEGATION_CUES = [
+  "not", "won't", 'wont', 'cannot', "can't", 'cant', 'never',
+  "don't", 'dont', "isn't", 'isnt', "wouldn't", 'wouldnt', "shouldn't",
+];
+
+/** True when an explicit negation appears shortly before the claim phrase. */
+function isNegatedBefore(text: string, term: string): boolean {
+  const idx = text.indexOf(term);
+  if (idx < 0) return false;
+  const window = text.slice(Math.max(0, idx - 60), idx);
+  return NEGATION_CUES.some((cue) => window.includes(cue));
+}
+
 function detectUnsupportedClaim(t: string): boolean {
-  if (has(t, ['guarantee', 'guaranteed', 'no risk', 'risk-free', 'risk free', '100%', 'best on the market', 'double your', 'triple your', 'overnight'])) {
-    return true;
+  // "I'm not going to guarantee a 40% increase" REFUSES to over-promise — the
+  // opposite of an unsupported claim — so negated claims are not flagged.
+  for (const term of CLAIM_TERMS) {
+    if (t.includes(term) && !isNegatedBefore(t, term)) return true;
   }
-  // e.g. "40% revenue increase" / "boost revenue by 50%"
-  return /\d+\s?%/.test(t) && has(t, ['increase', 'boost', 'improve', 'revenue', 'growth', 'roi', 'more sales']);
+  const pct = /\d+\s?%/.exec(t);
+  if (pct && has(t, ['increase', 'boost', 'improve', 'revenue', 'growth', 'roi', 'more sales'])) {
+    return !isNegatedBefore(t, pct[0]);
+  }
+  return false;
 }
 
 /** Whether a single message looks like discovery (used for pitch timing). */
@@ -151,7 +209,13 @@ export function detectSignals(ctx: EvaluationContext): EvaluatorSignals {
     (ctx.latestCustomerStatement === null || overlapCount(raw, ctx.latestCustomerStatement) < 1);
 
   const was_repetitive = ctx.previousSellerMessages.some((m) => jaccard(m, raw) >= 0.6);
-  const was_too_long = wordCount > 80;
+
+  // Rambling is length WITHOUT substance. A genuinely substantive turn (a real
+  // objection answer, a quantified impact, a reference to what the customer
+  // said) earns more room before it is penalised as rambling.
+  const substantive =
+    answered_objection || quantified_impact || referenced_customer_context || identified_pain;
+  const was_too_long = wordCount > (substantive ? 120 : 80);
 
   return {
     asked_open_question,

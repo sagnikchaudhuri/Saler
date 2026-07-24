@@ -62,7 +62,7 @@ export function ReportIssue() {
   };
 
   return (
-    <Disclosure summary="Report an issue">
+    <Disclosure summary="Report a problem">
       <p className="text-sm text-ink-secondary">
         Noticed something off? Jot it down. Notes stay on this device — nothing
         is sent anywhere.

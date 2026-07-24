@@ -69,8 +69,8 @@ beforeEach(() => {
 describe('SessionHistory — empty state', () => {
   it('shows an empty state when nothing is saved', () => {
     renderHistory();
-    expect(screen.getByText(/No sessions yet/i)).toBeInTheDocument();
-    expect(screen.queryByText('Clear All')).toBeNull();
+    expect(screen.getByText(/No report logs yet/i)).toBeInTheDocument();
+    expect(screen.queryByText('Clear All Logs')).toBeNull();
   });
 });
 
@@ -90,7 +90,7 @@ describe('SessionHistory — listing', () => {
   it('opens the saved report without starting a new roleplay', () => {
     sessionRepository.save(makeSession('a', 1_700_000_000_000));
     const onOpen = renderHistory();
-    fireEvent.click(screen.getByRole('button', { name: /View Report/i }));
+    fireEvent.click(screen.getByRole('button', { name: /View Evaluation/i }));
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen.mock.calls[0][0].id).toBe('a');
   });
@@ -106,20 +106,20 @@ describe('SessionHistory — deletion', () => {
     sessionRepository.save(makeSession('a', 1_700_000_000_000));
     renderHistory();
 
-    fireEvent.click(screen.getByRole('button', { name: /Delete session from/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Delete log from/i }));
     // Still present until confirmed.
     expect(sessionRepository.list()).toHaveLength(1);
     expect(screen.getByRole('button', { name: /Confirm Delete/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Confirm Delete/i }));
     expect(sessionRepository.list()).toHaveLength(0);
-    expect(screen.getByText(/No sessions yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No report logs yet/i)).toBeInTheDocument();
   });
 
   it('can cancel a deletion', () => {
     sessionRepository.save(makeSession('a', 1_700_000_000_000));
     renderHistory();
-    fireEvent.click(screen.getByRole('button', { name: /Delete session from/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Delete log from/i }));
     fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
     expect(sessionRepository.list()).toHaveLength(1);
   });
@@ -129,10 +129,10 @@ describe('SessionHistory — deletion', () => {
     sessionRepository.save(makeSession('b', 1_700_000_500_000));
     renderHistory();
 
-    fireEvent.click(screen.getByRole('button', { name: /Clear All/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Clear All Logs/i }));
     expect(sessionRepository.list()).toHaveLength(2); // not yet
     fireEvent.click(screen.getByRole('button', { name: /Delete All/i }));
     expect(sessionRepository.list()).toHaveLength(0);
-    expect(screen.getByText(/No sessions yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/No report logs yet/i)).toBeInTheDocument();
   });
 });

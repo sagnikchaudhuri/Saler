@@ -19,6 +19,8 @@ import { createSpeechProvider } from './speech/provider';
 import { SALES_SCENARIO } from './data/scenario';
 import type { SectionId } from './nav/sections';
 import type { SalerNavPreviews } from './components/SalerNav';
+import type { LogFocus } from './screens/SessionHistory';
+import { customerStatusLabel } from './ai/labels';
 
 // Stable config reference so the engine/hook don't recreate every render.
 const CONVO_CONFIG: CreateProviderConfig = { demoDelayMs: 500 };
@@ -36,6 +38,8 @@ export default function App() {
   const [section, setSection] = useState<SectionId>('S');
   const [mode, setMode] = useState<'carousel' | 'inside'>('carousel');
   const [historySession, setHistorySession] = useState<StoredSession | null>(null);
+  // Which part of a Report Log the user asked to see.
+  const [logFocus, setLogFocus] = useState<LogFocus>('evaluation');
 
   // Intro is presentation only. Reading `hasSeenIntro()` here (a pure read) lets
   // tests skip it via sessionStorage, and StrictMode re-invoking the initializer
@@ -141,13 +145,17 @@ export default function App() {
     setMode('inside');
   };
 
-  const openHistorySession = (session: StoredSession) => {
+  const openHistorySession = (session: StoredSession, focus: LogFocus = 'evaluation') => {
     setHistorySession(session);
+    setLogFocus(focus);
     setSection('E');
     setMode('inside');
   };
 
   const reportSession = historySession ?? convo.state.completedSession;
+
+  // Never imply live AI from a configured key alone.
+  const honestCustomerLabel = customerStatusLabel(convo.aiEnabled, convo.customerMode);
 
   // Hover previews use ONLY real application state — never invented data.
   const sellerTurns = convo.state.memory.sellerTurns;
@@ -165,7 +173,7 @@ export default function App() {
       ? [`Health ${convo.state.scoreState.visibleOverall}`, latestMomentum]
       : ['No live data yet'],
     E: completedReport ? [`Last score ${completedReport.overall_score}`] : ['No report yet'],
-    R: [`${sessions.length} saved session${sessions.length === 1 ? '' : 's'}`],
+    R: [`${sessions.length} report log${sessions.length === 1 ? '' : 's'}`],
   };
 
   return (
@@ -196,7 +204,7 @@ export default function App() {
                 onStart={startRoleplay}
                 speechSupported={SPEECH_SUPPORTED}
                 voiceProviderName={voice.providerName}
-                aiEnabled={convo.aiEnabled}
+                customerLabel={honestCustomerLabel}
               />
             )}
 
@@ -206,7 +214,7 @@ export default function App() {
               <LiveRoleplay
                 state={convo.state}
                 evaluatorName={convo.evaluatorName}
-                customerName={convo.providerName}
+                customerName={honestCustomerLabel}
                 onSubmit={convo.submit}
                 onRetry={convo.retry}
                 onEndCall={handleEndCall}
@@ -223,6 +231,7 @@ export default function App() {
                 onBriefing={() => selectSection('S')}
                 onHistory={() => selectSection('R')}
                 onStart={startRoleplay}
+                focusTranscript={historySession !== null && logFocus === 'transcript'}
               />
             )}
 

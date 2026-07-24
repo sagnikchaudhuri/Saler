@@ -58,6 +58,8 @@ export interface UseConversation {
   finalEvaluatorName: string;
   /** True when a server-side LLM is configured (probed, never a browser key). */
   aiEnabled: boolean;
+  /** Which implementation has actually produced customer turns so far. */
+  customerMode: CapabilityMode;
   start: () => void;
   submit: (text: string) => void;
   endCall: () => void;
@@ -130,6 +132,7 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
   return {
     state,
     providerName: engine.getProviderName(),
+    customerMode: engine.getProviderModes().customer,
     evaluatorName: engine.getEvaluatorName(),
     finalEvaluatorName: engine.getFinalEvaluatorName(),
     aiEnabled,

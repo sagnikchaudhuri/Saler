@@ -43,7 +43,7 @@ export function Layout({
       <footer className="border-t border-line px-5 py-6">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 text-xs text-ink-muted">
           <span>Practice the conversation before it matters.</span>
-          <span>Practice environment · No real customer data</span>
+          <span>No real customer data</span>
         </div>
       </footer>
     </div>

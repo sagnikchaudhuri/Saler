@@ -1,5 +1,4 @@
 import { SALES_SCENARIO } from '../data/scenario';
-import { Badge } from '../components/ui';
 
 /** The six live dimensions the deterministic engine actually scores. */
 const SKILLS = [
@@ -15,13 +14,17 @@ export function ScenarioBriefing({
   onStart,
   speechSupported = false,
   voiceProviderName,
-  aiEnabled = false,
+  customerLabel = 'Demo customer',
 }: {
   onStart: () => void;
   /** Existing capability state, surfaced for readiness — not re-probed here. */
   speechSupported?: boolean;
   voiceProviderName?: string;
-  aiEnabled?: boolean;
+  /**
+   * Honest customer status. A configured key is NOT evidence the model
+   * answered, so this never claims live AI before a successful response.
+   */
+  customerLabel?: string;
 }) {
   const s = SALES_SCENARIO;
 
@@ -81,7 +84,7 @@ export function ScenarioBriefing({
             </div>
             <div className="flex items-baseline justify-between gap-4">
               <dt className="text-ink-secondary">Customer</dt>
-              <dd className="text-ink">{aiEnabled ? 'Live AI' : 'Scripted'}</dd>
+              <dd className="text-ink">{customerLabel}</dd>
             </div>
             <div className="flex items-baseline justify-between gap-4">
               <dt className="text-ink-secondary">Voice input</dt>
@@ -128,10 +131,7 @@ export function ScenarioBriefing({
         </p>
       </details>
 
-      <div className="mt-10 flex items-center gap-2">
-        <Badge>Practice environment</Badge>
-        <span className="text-xs text-ink-muted">No real customer data is used.</span>
-      </div>
+      <p className="mt-10 text-xs text-ink-muted">No real customer data is used.</p>
     </div>
   );
 }

@@ -28,9 +28,9 @@ export function CarouselHome({
         </p>
       </div>
 
-      <div className="px-6 py-6 text-center text-xs text-ink-muted">
-        Pick a letter to begin — or press Enter on Scenario.
-      </div>
+      {/* Discoverability comes from the labelled letters themselves, their
+          focus states, and the previews — not from an instruction line. */}
+      <div className="py-6" />
     </div>
   );
 }

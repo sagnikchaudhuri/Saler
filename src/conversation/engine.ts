@@ -176,6 +176,23 @@ export class ConversationEngine {
     return this.finalEvaluator.getName();
   }
 
+  /**
+   * Read-only view of which implementation has ACTUALLY handled each
+   * capability so far. Exposed purely so the UI can label honestly; it does
+   * not influence the engine.
+   */
+  getProviderModes(): {
+    customer: CapabilityMode;
+    turnEvaluator: CapabilityMode;
+    finalReport: CapabilityMode;
+  } {
+    return {
+      customer: this.options.providerModes?.customer() ?? 'demo',
+      turnEvaluator: this.options.providerModes?.turnEvaluator() ?? 'demo',
+      finalReport: this.options.providerModes?.finalReport() ?? 'demo',
+    };
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => {

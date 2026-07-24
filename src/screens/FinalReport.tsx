@@ -17,7 +17,7 @@ const STAGE_LABEL: Record<SalesStage, string> = {
 
 /** Truthful labels: 'mixed' means some turns fell back mid-call. */
 const MODE_LABEL: Record<string, string> = {
-  ai: 'Live AI',
+  ai: 'AI (active)',
   demo: 'Deterministic (Demo)',
   mixed: 'Mixed — AI with deterministic fallback',
   none: 'Not used',
@@ -46,12 +46,15 @@ export function FinalReport({
   onBriefing,
   onHistory,
   onStart,
+  focusTranscript = false,
 }: {
   session: StoredSession | null;
   onReplay: () => void;
   onBriefing: () => void;
   onHistory: () => void;
   onStart: () => void;
+  /** Opened via "View Transcript" from a Report Log — expand it immediately. */
+  focusTranscript?: boolean;
 }) {
   if (!session) {
     return (
@@ -233,7 +236,10 @@ export function FinalReport({
           )}
         </Disclosure>
 
-        <Disclosure summary={`Show the ${session.transcript.length}-message transcript`}>
+        <Disclosure
+          summary={`Show the ${session.transcript.length}-message transcript`}
+          defaultOpen={focusTranscript}
+        >
           <div className="space-y-5">
             {session.transcript.map((t) => (
               <TranscriptLine key={t.id} turn={t} />
