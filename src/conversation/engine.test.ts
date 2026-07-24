@@ -22,12 +22,16 @@ function makeEngine(provider: ConversationProvider) {
   });
 }
 
-class FailingProvider implements ConversationProvider {
-  getName() { return 'fail'; }
+/** Fails the first reply, succeeds afterwards — for exercising retry. */
+class FailOnceProvider implements ConversationProvider {
+  calls = 0;
+  getName() { return 'failonce'; }
   isAvailable() { return true; }
   getOpeningLine() { return 'Hi.'; }
   async generateReply(): Promise<ProviderReply> {
-    throw new Error('network exploded');
+    this.calls += 1;
+    if (this.calls === 1) throw new Error('network exploded');
+    return { message: 'Recovered reply.' };
   }
 }
 
@@ -155,16 +159,25 @@ describe('ConversationEngine — input validation', () => {
 });
 
 describe('ConversationEngine — error handling', () => {
-  it('enters Error on provider failure and recovers via retry', async () => {
-    const engine = makeEngine(new FailingProvider());
+  it('enters Error on provider failure and recovers by regenerating only the reply', async () => {
+    const engine = makeEngine(new FailOnceProvider());
     engine.start();
     await engine.submitSeller('How do you train reps today?');
     expect(engine.getState().status).toBe('Error');
     expect(engine.getState().error).toBeTruthy();
 
-    engine.retry();
-    expect(engine.getState().status).toBe('WaitingForSeller');
-    expect(engine.getState().error).toBeNull();
+    const sellerBefore = engine.getState().transcript.filter((t) => t.speaker === 'seller').length;
+    const scoredBefore = engine.getState().scoreState.history.length;
+
+    await engine.retry();
+    const s = engine.getState();
+    expect(s.status).toBe('WaitingForSeller');
+    expect(s.error).toBeNull();
+    // Retry regenerated ONLY the customer reply — the seller turn was neither
+    // re-appended nor re-scored.
+    expect(s.transcript.filter((t) => t.speaker === 'seller').length).toBe(sellerBefore);
+    expect(s.scoreState.history.length).toBe(scoredBefore);
+    expect(s.transcript.at(-1)!.speaker).toBe('customer');
   });
 
   it('treats a blank provider message as an invalid response', async () => {

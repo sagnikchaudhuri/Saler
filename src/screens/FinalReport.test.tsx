@@ -187,3 +187,32 @@ describe('FinalReport — content & transcript', () => {
     expect(screen.getByText(/No report yet/i)).toBeInTheDocument();
   });
 });
+
+describe('FinalReport — coaching integrity', () => {
+  it('renders an honest empty state when there are no strengths', () => {
+    renderReport(makeSession({ finalReport: { ...makeSession().finalReport, strengths: [] } }));
+    expect(
+      screen.getByText(/No clear strengths could be established from this call/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does not score a zero-turn call and suppresses the headline number', () => {
+    renderReport(
+      makeSession({
+        sellerTurnCount: 0,
+        scoreHistory: [],
+        finalReport: { ...makeSession().finalReport, strengths: [] },
+      }),
+    );
+    expect(screen.getByText(/no seller turns were recorded/i)).toBeInTheDocument();
+    // The Final Score tile shows a dash, not a fabricated number.
+    const tile = screen.getByText('Final Score').parentElement as HTMLElement;
+    expect(within(tile).getByText('—')).toBeInTheDocument();
+    expect(within(tile).queryByText('58')).toBeNull();
+  });
+
+  it('qualifies a thin call as limited evidence', () => {
+    renderReport(makeSession({ sellerTurnCount: 1 }));
+    expect(screen.getByText(/Limited evidence/i)).toBeInTheDocument();
+  });
+});

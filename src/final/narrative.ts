@@ -66,23 +66,37 @@ export interface SelectedStatements {
   weakestSignals: EvaluatorSignals | null;
 }
 
+/**
+ * Positive-merit threshold a statement must clear to be shown as the strongest
+ * moment: at least one genuine positive signal. Below it (punctuation-only,
+ * "ok", "sure", a bare acknowledgement) there is no strongest moment, and we
+ * return '' rather than crowning whichever statement merely scored least-badly
+ * or happened to come first.
+ */
+export const STRONGEST_MERIT_THRESHOLD = 1;
+
 export function selectStatements(ctx: FinalEvaluationContext): SelectedStatements {
   const p = pairs(ctx);
   if (p.length === 0) return { strongest: '', weakest: '', weakestSignals: null };
+
+  const best = [...p].sort((a, b) => strongestScore(b.sig) - strongestScore(a.sig))[0];
+  const strongest = strongestScore(best.sig) >= STRONGEST_MERIT_THRESHOLD ? best.msg : '';
+
   if (p.length === 1) {
-    // One statement: use it as strongest; not enough evidence for weakest.
-    return { strongest: p[0].msg, weakest: '', weakestSignals: null };
+    // One statement: it is the strongest only if it has real merit, and there
+    // is never enough evidence for a distinct weakest.
+    return { strongest, weakest: '', weakestSignals: null };
   }
 
-  const strongest = [...p].sort((a, b) => strongestScore(b.sig) - strongestScore(a.sig))[0];
-  // Weakest must be a DIFFERENT statement than strongest.
+  // Weakest must be a DIFFERENT statement than the chosen strongest. When no
+  // statement qualified as strongest, every statement stays eligible.
   const weakestCandidates = [...p]
-    .filter((x) => x.msg !== strongest.msg)
+    .filter((x) => strongest === '' || x.msg !== strongest)
     .sort((a, b) => weakestScore(b.sig) - weakestScore(a.sig));
   const weakest = weakestCandidates[0] ?? null;
 
   return {
-    strongest: strongest.msg,
+    strongest,
     weakest: weakest ? weakest.msg : '',
     weakestSignals: weakest ? weakest.sig : null,
   };
@@ -242,17 +256,13 @@ export function buildComparison(liveAverage: number, finalScore: number): string
 export const LIVE_VS_FINAL_NOTE =
   'Live scoring rates each turn incrementally as the call unfolds; final scoring judges the conversation as a whole — coverage, progression, and outcome — so the two can differ.';
 
-/** Exactly three strengths, drawn from what actually happened. */
+/**
+ * Zero to three strengths, drawn ONLY from what actually happened. There is no
+ * filler: a call that demonstrated nothing praiseworthy returns an empty list,
+ * and the report renders an honest "no clear strengths" state. Inventing praise
+ * for a weak call (the old behaviour) destroyed the report's credibility.
+ */
 export function buildStrengths(ctx: FinalEvaluationContext, a: Aggregates): string[] {
-  // With no seller turns there is nothing to praise — say so rather than
-  // inventing strengths that never happened.
-  if (a.n === 0) {
-    return [
-      'Not enough evidence to identify strengths.',
-      'Complete a full call to see what you did well.',
-      'Aim for at least four exchanges next time.',
-    ];
-  }
   const found: string[] = [];
   if (a.everProcess) found.push('Explored how the team trains reps today.');
   if (a.everPain) found.push('Surfaced a concrete business problem.');
@@ -260,12 +270,7 @@ export function buildStrengths(ctx: FinalEvaluationContext, a: Aggregates): stri
   if (a.everContext) found.push('Listened well and referenced Rohan’s own words.');
   if (ctx.addressedObjections.length > 0) found.push('Engaged an objection directly.');
   if (ctx.agreedToNextStep) found.push('Earned agreement for a product demo.');
-  const filler = [
-    'Kept the conversation customer-led.',
-    'Led with questions rather than a pitch.',
-    'Stayed composed with a sceptical buyer.',
-  ];
-  return pad(found, filler, 3);
+  return found.slice(0, 3);
 }
 
 /** Exactly three missed opportunities, based on real gaps. */

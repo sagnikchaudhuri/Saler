@@ -1,6 +1,7 @@
 import type { FinalEvaluationContext, FinalEvaluatorProvider, FinalReport } from './types';
 import {
   aggregate,
+  applyEvidenceGuard,
   computeCategories,
   objectionHandlingScore,
   overallFromCategories,
@@ -39,7 +40,10 @@ export class DemoFinalEvaluatorProvider implements FinalEvaluatorProvider {
     const ohScore = objectionHandlingScore(quality);
     const { categories, objectionRelevant } = computeCategories(ctx, a, ohScore);
 
-    const overall_score = overallFromCategories(categories, objectionRelevant);
+    // Weighted blend, then corroborate against the live history so a repetitive
+    // or low-information call cannot outscore what its turns actually earned.
+    const blended = overallFromCategories(categories, objectionRelevant);
+    const overall_score = applyEvidenceGuard(blended, ctx, a);
 
     const { strongest, weakest, weakestSignals } = selectStatements(ctx);
     const lowest = lowestRelevantCategory(categories, objectionRelevant);

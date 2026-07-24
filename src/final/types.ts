@@ -31,7 +31,7 @@ export interface ObjectionResult {
 export interface FinalReport {
   overall_score: number;
   category_scores: FinalCategoryScores;
-  strengths: string[]; // exactly 3
+  strengths: string[]; // 0–3, evidence-based, never padded with filler
   missed_opportunities: string[]; // exactly 3
   strongest_statement: string;
   weakest_statement: string;

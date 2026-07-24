@@ -1,4 +1,5 @@
 import type { EvaluatorSignals } from '../types';
+import type { ScoreHistoryEntry } from '../scoring/types';
 import type { FinalCategoryScores, FinalEvaluationContext } from './types';
 
 // ============================================================================
@@ -6,15 +7,48 @@ import type { FinalCategoryScores, FinalEvaluationContext } from './types';
 //
 // Categories are computed from evidence (per-turn signals in the score history
 // + transcript facts), NOT copied from the final live metrics. The overall is a
-// documented weighted blend of the categories. Objection Handling is only
-// meaningful when an objection was raised — otherwise it is excluded from the
-// overall (its weight is redistributed) so a clean call is never penalised for
-// a dimension that never became relevant.
+// documented weighted blend of the categories, then a divergence guard keeps a
+// repetitive or low-information call from claiming a whole-conversation score
+// its turns never supported. Objection Handling is only meaningful when an
+// objection was raised — otherwise it is excluded from the overall (its weight
+// is redistributed) so a clean call is never penalised for a dimension that
+// never became relevant.
+//
+// EVIDENCE-DENSITY, NOT EVER-OCCURRENCE. Heavily weighted categories blend
+// COVERAGE (did the seller touch this area at all — breadth) with DENSITY (what
+// fraction of turns actually did it — depth) and subtract repetition/noise
+// penalties. This is what stops a 20-turn repetitive call from earning the same
+// category credit as five concise strong turns: coverage saturates for both,
+// but the repetitive call loses the density it faked to repetition penalties.
 // ============================================================================
 
 function clamp(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
+
+/** Proportion of `n` turns that did something, guarded against divide-by-zero. */
+function frac(count: number, n: number): number {
+  return n > 0 ? count / n : 0;
+}
+
+/** Any of these firing means the turn did something genuinely on-task. */
+const POSITIVE_SIGNALS: (keyof EvaluatorSignals)[] = [
+  'asked_open_question', 'asked_closed_question', 'identified_pain',
+  'quantified_impact', 'explored_current_process', 'explored_decision_process',
+  'explored_timeline', 'referenced_customer_context', 'acknowledged_objection',
+  'clarified_objection', 'answered_objection', 'confirmed_objection_resolution',
+  'asked_relevant_follow_up', 'proposed_next_step',
+];
+
+/** The subset that counts as genuine discovery work. */
+const DISCOVERY_SIGNALS: (keyof EvaluatorSignals)[] = [
+  'asked_open_question', 'identified_pain', 'quantified_impact',
+  'explored_current_process', 'explored_decision_process', 'explored_timeline',
+  'referenced_customer_context', 'asked_relevant_follow_up',
+];
+
+const anySignal = (e: ScoreHistoryEntry, keys: (keyof EvaluatorSignals)[]) =>
+  keys.some((k) => e.signals[k]);
 
 export interface Aggregates {
   n: number;
@@ -33,12 +67,26 @@ export interface Aggregates {
   repetitiveCount: number;
   ignoredCount: number;
   firstSignals: EvaluatorSignals | null;
+  // --- density (depth), not just coverage (breadth) ---
+  /** Turns that fired ANY positive signal. */
+  meaningfulTurns: number;
+  /** Turns that did genuine discovery work. */
+  discoveryTurns: number;
+  painTurns: number;
+  impactTurns: number;
+  contextTurns: number;
+  /** Turns that did nothing on-task (trivial, off-topic, or pure noise). */
+  noiseTurns: number;
 }
 
 export function aggregate(ctx: FinalEvaluationContext): Aggregates {
   const h = ctx.scoreHistory;
   const ever = (k: keyof EvaluatorSignals) => h.some((e) => e.signals[k]);
   const count = (k: keyof EvaluatorSignals) => h.filter((e) => e.signals[k]).length;
+  const turnsWith = (keys: (keyof EvaluatorSignals)[]) =>
+    h.filter((e) => anySignal(e, keys)).length;
+
+  const meaningfulTurns = turnsWith(POSITIVE_SIGNALS);
   return {
     n: ctx.sellerTurnCount,
     everOpenQuestion: ever('asked_open_question'),
@@ -56,7 +104,40 @@ export function aggregate(ctx: FinalEvaluationContext): Aggregates {
     repetitiveCount: count('was_repetitive'),
     ignoredCount: count('ignored_customer_statement'),
     firstSignals: h[0]?.signals ?? null,
+    meaningfulTurns,
+    discoveryTurns: turnsWith(DISCOVERY_SIGNALS),
+    painTurns: count('identified_pain'),
+    impactTurns: count('quantified_impact'),
+    contextTurns: count('referenced_customer_context'),
+    noiseTurns: Math.max(0, ctx.sellerTurnCount - meaningfulTurns),
   };
+}
+
+// --- evidence policy --------------------------------------------------------
+
+export type EvidenceLevel = 'none' | 'limited' | 'sufficient';
+
+/**
+ * Deterministic minimum-evidence rule, from the persisted facts a report has:
+ *
+ *   none        no seller turns at all — nothing happened to assess.
+ *   limited     one or two turns, OR several turns that were all trivial
+ *               (no positive signal ever fired) — real but too thin to score
+ *               with confidence.
+ *   sufficient  enough substantive turns to stand behind the numbers.
+ *
+ * The report UI uses this to suppress a "Not scored" call's headline and to
+ * qualify a limited one, so a near-empty call never wears a confident number.
+ */
+export function evidenceLevel(
+  sellerTurnCount: number,
+  scoreHistory: ScoreHistoryEntry[],
+): EvidenceLevel {
+  if (sellerTurnCount <= 0) return 'none';
+  if (sellerTurnCount <= 2) return 'limited';
+  const meaningful = scoreHistory.filter((e) => anySignal(e, POSITIVE_SIGNALS)).length;
+  if (meaningful === 0) return 'limited';
+  return 'sufficient';
 }
 
 // --- individual category scores --------------------------------------------
@@ -76,40 +157,49 @@ function openingAndConfidence(a: Aggregates): number {
 }
 
 function discoveryQuestions(a: Aggregates): number {
-  let s = 22;
-  if (a.everOpenQuestion) s += 12;
-  if (a.everProcess) s += 15;
-  if (a.everPain) s += 15;
-  if (a.everImpact) s += 16;
-  if (a.everTimeline) s += 10;
-  if (a.everDecision) s += 10;
+  // Coverage of distinct discovery areas (breadth), max 50.
+  const coverage =
+    (Number(a.everProcess) + Number(a.everPain) + Number(a.everImpact) +
+      Number(a.everTimeline) + Number(a.everDecision)) * 10;
+  const open = a.everOpenQuestion ? 6 : 0;
+  // Density: proportion of turns that actually did discovery (depth), max 24.
+  const density = Math.round(frac(a.discoveryTurns, a.n) * 24);
+  let s = coverage + open + density;
+  s -= Math.min(a.repetitiveCount, 8) * 5; // repetition is not discovery
+  s -= Math.min(a.noiseTurns, 8) * 3; // trivial / off-topic turns
   return clamp(s);
 }
 
 function problemIdentification(a: Aggregates): number {
-  let s = 25;
-  if (a.everPain) s += 30;
-  if (a.everImpact) s += 25;
-  if (a.everContext) s += 20;
+  // Coverage of the pieces of a real problem statement, max 54.
+  const coverage =
+    (a.everPain ? 22 : 0) + (a.everImpact ? 18 : 0) + (a.everContext ? 14 : 0);
+  // Sustained relevance: how much of the call actually stayed on-task, max 22.
+  const sustained = Math.round(frac(a.meaningfulTurns, a.n) * 22);
+  let s = coverage + sustained;
+  s -= Math.min(a.repetitiveCount, 8) * 4;
+  s -= Math.min(a.unsupportedCount, 4) * 6; // unsupported conclusions
   return clamp(s);
 }
 
 function valueArticulation(a: Aggregates, ctx: FinalEvaluationContext): number {
-  let s = 48;
+  let s = 45;
   if (a.everContext) s += 15; // tied value to a stated need
   if (ctx.finalStage === 'value_mapping' || ctx.finalStage === 'next_step') s += 10;
   if (a.everNextStep) s += 5;
-  s -= a.unsupportedCount * 12;
+  s -= a.unsupportedCount * 10;
   s -= a.earlyPitchCount * 8;
+  s -= Math.min(a.repetitiveCount, 6) * 3;
   return clamp(s);
 }
 
 function clarityAndConciseness(a: Aggregates): number {
-  let s = 65;
-  s -= a.tooLongCount * 8;
-  s -= a.repetitiveCount * 8;
+  let s = 68;
+  s -= Math.min(a.tooLongCount, a.n) * 7;
+  s -= Math.min(a.repetitiveCount, a.n) * 7; // rambling / repetition throughout
   s -= a.unsupportedCount * 6;
   s -= a.ignoredCount * 5;
+  s -= Math.min(a.noiseTurns, 8) * 2;
   return clamp(s);
 }
 
@@ -164,6 +254,30 @@ export function overallFromCategories(
   const weightSum = active.reduce((sum, k) => sum + CATEGORY_WEIGHTS[k], 0);
   const score = active.reduce((sum, k) => sum + cats[k] * (CATEGORY_WEIGHTS[k] / weightSum), 0);
   return clamp(score);
+}
+
+/**
+ * Divergence guard: corroborate the blended overall against the live history.
+ *
+ * The final score legitimately differs from the live average — it judges the
+ * whole conversation, not each turn — but it may only sit ABOVE the live
+ * average by a margin the evidence earns. A call that was heavily repetitive or
+ * mostly low-information cannot claim a strong whole-conversation score its
+ * turns never supported (the exact spam-farming exploit this closes). The guard
+ * never RAISES a score; it only caps an over-optimistic one.
+ */
+export function applyEvidenceGuard(
+  overall: number,
+  ctx: FinalEvaluationContext,
+  a: Aggregates,
+): number {
+  const repRatio = frac(a.repetitiveCount, a.n);
+  const noiseRatio = frac(a.noiseTurns, a.n);
+  let maxAbove = 18;
+  if (repRatio > 0.3 || noiseRatio > 0.3) maxAbove = 8;
+  if (repRatio > 0.5 || noiseRatio > 0.5) maxAbove = 0;
+  const cap = clamp(Math.round(ctx.liveAverage) + maxAbove);
+  return Math.min(overall, cap);
 }
 
 /**

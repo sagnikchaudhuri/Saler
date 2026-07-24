@@ -100,8 +100,15 @@ function safeErrorMessage(err: unknown): string {
  *
  *   Idle → (start) → WaitingForSeller
  *   WaitingForSeller → (submit) → Evaluating → GeneratingReply → WaitingForSeller
- *   any → (endCall) → Completed
- *   GeneratingReply → (customer failure) → Error → (retry) → WaitingForSeller
+ *   WaitingForSeller | Evaluating | GeneratingReply | Error → (endCall) → Completed
+ *   GeneratingReply → (customer failure) → Error → (retry) → GeneratingReply → …
+ *
+ * CALL EPOCH — every async step captures the epoch it began in and, after each
+ * await, discards its result if the epoch has moved on (a new call started, the
+ * call ended, or the engine was disposed). This is why End Call during an
+ * in-flight turn can never append a late reply, revive a completed call, or
+ * mutate score history after completion. Completed is terminal for a given
+ * epoch; only start() (on a fresh engine) opens a new one.
  *
  * EXECUTION ORDER — evaluation runs SEQUENTIALLY before customer generation.
  * Rationale: the evaluator only needs the seller's turn + prior context (not
@@ -129,6 +136,28 @@ export class ConversationEngine {
   private objectionEvents: ObjectionEvent[] = [];
   /** Fallback warnings accumulated across the whole call, saved with session. */
   private sessionWarnings: string[] = [];
+  /**
+   * Monotonic call generation. Bumped whenever the call's identity changes —
+   * a new call starts, the call ends, or the engine is disposed. Every async
+   * operation captures the epoch it began in and, after each await, discards
+   * its result if the epoch has moved on. This is what stops a slow evaluator
+   * or customer reply from mutating a call that has already been ended — a
+   * plain AbortController is not enough, because mocked and deterministic
+   * providers still resolve after an abort.
+   */
+  private callEpoch = 0;
+  /**
+   * Stable id for the current call, created once when the call starts. endCall
+   * reuses it, so repeated or racing endCall calls resolve to the SAME session
+   * id and the hook's save-by-id de-dupe makes persistence structurally
+   * idempotent — never dependent on timestamps being unique.
+   */
+  private callId: string | null = null;
+  /**
+   * Set when a customer reply failed to generate. retry() regenerates ONLY the
+   * reply from this — it never re-appends or re-scores the seller turn.
+   */
+  private pendingReply: { sellerMessage: string } | null = null;
 
   constructor(
     private readonly provider: ConversationProvider,
@@ -226,13 +255,26 @@ export class ConversationEngine {
       });
       return;
     }
+    // A new call: fix its identity once and open a fresh epoch.
+    const startedAt = this.now();
+    this.callId = makeCallId(startedAt);
+    this.callEpoch += 1;
+    this.pendingReply = null;
     const opening = this.makeTurn('customer', this.provider.getOpeningLine(), 'opening');
     this.setState({
       status: 'WaitingForSeller',
       transcript: [opening],
       stage: 'opening',
-      startedAt: this.now(),
+      startedAt,
     });
+  }
+
+  /**
+   * Dispose the engine: bump the epoch so any in-flight continuation is
+   * discarded. The hook calls this before replacing the engine on reset.
+   */
+  dispose(): void {
+    this.callEpoch += 1;
   }
 
   /** Submit a seller message and generate the customer's reply. */
@@ -252,6 +294,10 @@ export class ConversationEngine {
       return;
     }
 
+    // The epoch this turn belongs to. If the call ends (or is disposed) while
+    // we await below, the epoch moves and every continuation bails out.
+    const epoch = this.callEpoch;
+
     // Append the seller's turn. The stage recorded is the stage the seller
     // was operating in when they spoke.
     const sellerTurn = this.makeTurn('seller', text, this.state.stage);
@@ -265,9 +311,20 @@ export class ConversationEngine {
     });
 
     // --- 1) EVALUATE (must never block the call) ---
-    await this.evaluateAndScore(text, priorTranscript);
+    await this.evaluateAndScore(text, priorTranscript, epoch);
+    // End Call may have landed during evaluation: do not touch a finished call.
+    if (!this.isCurrent(epoch, 'Evaluating')) return;
 
     // --- 2) GENERATE the customer reply ---
+    await this.generateCustomerReply(text, epoch);
+  }
+
+  /**
+   * Generate and apply the customer reply for a seller message. Separated from
+   * submitSeller so retry() can re-run ONLY this step after a generation
+   * failure — without appending or re-scoring the seller turn.
+   */
+  private async generateCustomerReply(sellerMessage: string, epoch: number): Promise<void> {
     this.setState({ status: 'GeneratingReply' });
     const ctx: ConversationContext = {
       scenarioId: this.options.scenarioId,
@@ -277,18 +334,25 @@ export class ConversationEngine {
       memory: this.state.memory,
       stage: this.state.stage,
       objectionsRaised: this.state.objectionsRaised,
-      sellerMessage: text,
+      sellerMessage,
     };
 
     let reply: ProviderReply;
     try {
       reply = await this.provider.generateReply(ctx);
     } catch (err) {
+      // The call may have ended while we were waiting; if so, stay silent.
+      if (!this.isCurrent(epoch, 'GeneratingReply')) return;
+      this.pendingReply = { sellerMessage };
       this.setState({ status: 'Error', error: safeErrorMessage(err) });
       return;
     }
 
+    // A late reply for a call that has since ended must never be appended.
+    if (!this.isCurrent(epoch, 'GeneratingReply')) return;
+
     if (!reply || typeof reply.message !== 'string' || reply.message.trim() === '') {
+      this.pendingReply = { sellerMessage };
       this.setState({
         status: 'Error',
         error: new InvalidProviderResponseError().message,
@@ -296,13 +360,23 @@ export class ConversationEngine {
       return;
     }
 
-    this.applyReply(text, reply);
+    this.pendingReply = null;
+    this.applyReply(sellerMessage, reply);
     // Surface a mid-call capability change (e.g. AI customer → scripted).
     const customerNotice = this.options.fallbackNotices?.customer() ?? null;
     this.setState({
       status: 'WaitingForSeller',
       capabilityWarning: customerNotice ?? this.state.capabilityWarning,
     });
+  }
+
+  /**
+   * True when a captured epoch is still the live one AND the engine is in the
+   * status a continuation expects. Any mismatch means the call moved on (ended,
+   * disposed, or restarted) and the stale result must be discarded.
+   */
+  private isCurrent(epoch: number, expected: ConversationStatus): boolean {
+    return this.callEpoch === epoch && this.state.status === expected;
   }
 
   /**
@@ -313,6 +387,7 @@ export class ConversationEngine {
   private async evaluateAndScore(
     sellerMessage: string,
     priorTranscript: TranscriptTurn[],
+    epoch: number,
   ): Promise<void> {
     const latestCustomerStatement =
       [...priorTranscript].reverse().find((t) => t.speaker === 'customer')?.message ?? null;
@@ -344,6 +419,10 @@ export class ConversationEngine {
       result = safeFallbackResult(this.state.stage);
       warning = 'Evaluation is temporarily unavailable; scoring was skipped for this turn.';
     }
+
+    // End Call may have landed while the evaluator was running. Never mutate
+    // score history after completion — discard this result silently.
+    if (!this.isCurrent(epoch, 'Evaluating')) return;
 
     // A capability downgrade (AI evaluator → deterministic) is not an error;
     // record it honestly without alarming the user.
@@ -400,10 +479,28 @@ export class ConversationEngine {
     });
   }
 
-  /** Recover from an Error back to accepting seller input. */
-  retry(): void {
+  /**
+   * Recover from an Error.
+   *
+   * Retry semantics (documented): if the failure was in generating the customer
+   * reply, the already-appended, already-scored seller turn is KEPT and only
+   * the reply is regenerated — so retrying never adds a second seller turn and
+   * never scores the same message twice. Any other Error (e.g. a start-time
+   * failure with nothing pending) simply returns to accepting input.
+   *
+   *   Error(reply failed) → (retry) → GeneratingReply → WaitingForSeller
+   *   Error(other)        → (retry) → WaitingForSeller
+   */
+  async retry(): Promise<void> {
     if (this.state.status !== 'Error') return;
-    this.setState({ status: 'WaitingForSeller', error: null });
+    const pending = this.pendingReply;
+    if (!pending) {
+      this.setState({ status: 'WaitingForSeller', error: null });
+      return;
+    }
+    this.setState({ error: null });
+    // Regenerate ONLY the reply for the existing seller turn — no re-scoring.
+    await this.generateCustomerReply(pending.sellerMessage, this.callEpoch);
   }
 
   /**
@@ -414,11 +511,20 @@ export class ConversationEngine {
    * → compute the live average → build the completed session.
    *
    * Persisting the session is deliberately NOT done here: the engine stays
-   * storage-agnostic and the hook writes it through the repository. Calling
-   * endCall twice is a no-op, so repeated clicks cannot duplicate a session.
+   * storage-agnostic and the hook writes it through the repository. Repeated,
+   * racing, or post-completion endCall calls all return early (or resolve to
+   * the same stable call id), so repeated clicks cannot duplicate a session.
    */
   async endCall(): Promise<void> {
-    if (this.state.status === 'Completed') return;
+    // Idempotent and race-proof: a completed call stays completed, and a call
+    // that never started has nothing to end. Combined with the epoch bump
+    // below, this guarantees one logical call yields exactly one session.
+    if (this.state.status === 'Completed' || this.state.status === 'Idle') return;
+
+    // Bump the epoch FIRST so any in-flight evaluation or reply generation is
+    // discarded rather than mutating a completed call.
+    this.callEpoch += 1;
+    this.pendingReply = null;
 
     const endedAt = this.now();
     const startedAt = this.state.startedAt ?? endedAt;
@@ -478,7 +584,9 @@ export class ConversationEngine {
     ];
 
     const completedSession: StoredSession = {
-      id: makeSessionId(startedAt, endedAt),
+      // Stable id created at start — reused here so a repeated or racing
+      // endCall can only ever resolve to this same session.
+      id: this.callId ?? makeCallId(startedAt),
       schemaVersion: SESSION_SCHEMA_VERSION,
       date: new Date(endedAt).toISOString(),
       startTime: startedAt,
@@ -512,8 +620,12 @@ export class ConversationEngine {
   }
 }
 
-/** Unique-enough session id. Randomness here is fine (not part of scoring). */
-function makeSessionId(startedAt: number, endedAt: number): string {
+/**
+ * Stable call/session id, created ONCE when a call starts. Randomness is fine
+ * (it is not part of scoring); the fallback avoids the collisions that a
+ * timestamp-only id could produce for two calls in the same millisecond.
+ */
+function makeCallId(startedAt: number): string {
   try {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
@@ -521,5 +633,5 @@ function makeSessionId(startedAt: number, endedAt: number): string {
   } catch {
     // fall through
   }
-  return `sess-${startedAt}-${endedAt}`;
+  return `sess-${startedAt}-${Math.floor(Math.random() * 1e9)}`;
 }

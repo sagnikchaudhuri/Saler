@@ -353,12 +353,12 @@ cannot take precedence (confirmed: the two values differ).
 - **To complete live verification:** add credit to the OpenAI project. No code
   change is required; the AI providers are already first in every chain.
 
-## Phase 7b — Testing & resilience  `[ ]`
-- [ ] Scoring tests (all cases)
-- [ ] Conversation tests (valid/invalid JSON/empty/limits/demo)
-- [ ] Voice tests (fallback/cancel/overlap)
-- [ ] Persistence tests (save/read/delete/corrupt)
-- [ ] Checks + commit
+## Phase 7b — Testing & resilience  `[x]`
+- [x] Scoring tests (all cases)
+- [x] Conversation tests (valid/invalid JSON/empty/limits/demo)
+- [x] Voice tests (fallback/cancel/overlap)
+- [x] Persistence tests (save/read/delete/corrupt)
+- [x] Checks + commit (folded into later phases; suite now 576 tests)
 
 ## Phase 8 — Visual transformation  `[x]`
 - [x] White editorial system, single #315CFF accent (committed 5e3945c)
@@ -393,6 +393,47 @@ cannot take precedence (confirmed: the two values differ).
 | `LLM_MODEL` | Optional — defaults to gpt-4o-mini |
 | `ELEVENLABS_API_KEY` | Optional enhancement — browser/silent fallback |
 | `ELEVENLABS_VOICE_ID` | Optional — required only alongside the key |
+
+## Post-audit repairs
+
+A production-readiness audit reproduced four confirmed defects. Repair Phase 1
+addresses call integrity and coaching integrity; AI-route security is a
+separate, later phase.
+
+### Repair Phase 1 — call & coaching integrity  `[x]`
+- [x] **Async call-completion race.** Call-epoch mechanism: every async step
+  captures its epoch and discards its result after each await if the epoch
+  moved on. End Call during an in-flight turn can no longer append a late
+  reply, revive a completed call, or mutate score history after completion.
+- [x] **Idempotent End Call.** Stable call id created once in `start()` and
+  reused by `endCall()`; repeated/concurrent/post-resurrection calls resolve to
+  one session. No timestamp-derived identity.
+- [x] **Retry double-scoring.** Retry regenerates only the customer reply; the
+  seller turn is never re-appended or re-scored.
+- [x] **Fabricated strengths removed.** `buildStrengths` is 0–3, evidence-only,
+  no filler; schema/validator accept 0–3; UI renders an honest empty state.
+- [x] **Merit-gated strongest moment.** Punctuation-only/trivial turns are never
+  the strongest moment; `''` when nothing qualifies.
+- [x] **Final score reworked against spam.** Evidence-density + coverage model
+  with repetition/noise penalties across categories, plus a live-vs-final
+  divergence guard. Strong concise (69) reliably beats 20-turn spam (≤31).
+- [x] **Minimum-evidence policy.** `none`/`limited`/`sufficient`; a zero-turn
+  call is "Not scored" with no fabricated precision.
+- [x] Tests: +25 (race/idempotency/retry, narrative grounding, spam-vs-strong,
+  evidence). Suite **576**, all green. Adversarial battery (100 random / 20
+  farming / 10 trivial / 10 race / 10 retry) — zero invariant violations.
+- [x] typecheck · lint · build green; bundle secret scan clean.
+- See `docs/SCORING_CALIBRATION.md` for formulas, weights, and epoch/retry design.
+
+### Deferred (later repair phases)
+- [ ] **AI-route abuse controls** (rate-limit `/api/conversation`,
+  `/api/evaluate-turn`, `/api/evaluate-final`; origin checks). **[!] Do not
+  deploy with `OPENAI_API_KEY` set until done.**
+- [ ] Recompute LLM final `overall_score`/`category_scores` deterministically.
+- [ ] Ground/cap remaining LLM free-text report fields.
+- [ ] ErrorBoundary + `localStorage` quota handling.
+- [ ] A11y: navbar touch targets ≥ 24px, darken `ink-muted` to meet 4.5:1.
+- [ ] `beforeunload` guard for an in-progress call.
 
 ---
 

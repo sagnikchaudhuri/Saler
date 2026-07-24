@@ -57,8 +57,16 @@ describe('validateFinalReport — shape rules', () => {
     expect(validateFinalReport(bad).ok).toBe(false);
   });
 
-  it('requires exactly three strengths and three missed opportunities', () => {
-    expect(validateFinalReport({ ...validReport(), strengths: ['a', 'b'] }).ok).toBe(false);
+  it('allows zero to three strengths but rejects more than three', () => {
+    // Strengths are evidence-based and may be empty; padding with filler is the
+    // bug this replaces. Two is fine; four is not.
+    expect(validateFinalReport({ ...validReport(), strengths: [] }).ok).toBe(true);
+    expect(validateFinalReport({ ...validReport(), strengths: ['a', 'b'] }).ok).toBe(true);
+    expect(validateFinalReport({ ...validReport(), strengths: ['a', 'b', 'c', 'd'] }).ok).toBe(false);
+  });
+
+  it('still requires exactly three missed opportunities', () => {
+    expect(validateFinalReport({ ...validReport(), missed_opportunities: ['a', 'b'] }).ok).toBe(false);
     expect(validateFinalReport({ ...validReport(), missed_opportunities: ['a', 'b', 'c', 'd'] }).ok).toBe(false);
   });
 

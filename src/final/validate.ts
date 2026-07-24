@@ -57,8 +57,10 @@ export function validateFinalReport(
     if (!isScore(x.category_scores[k])) return { ok: false, error: `category ${k} invalid.` };
   }
 
-  if (!isStringArray(x.strengths) || x.strengths.length !== 3) {
-    return { ok: false, error: 'strengths must be exactly 3 strings.' };
+  // Strengths are evidence-based and may be empty: a weak call has none, and we
+  // never pad with invented praise. Zero to three.
+  if (!isStringArray(x.strengths) || x.strengths.length > 3) {
+    return { ok: false, error: 'strengths must be 0 to 3 strings.' };
   }
   if (!isStringArray(x.missed_opportunities) || x.missed_opportunities.length !== 3) {
     return { ok: false, error: 'missed_opportunities must be exactly 3 strings.' };
@@ -115,11 +117,11 @@ export function safeFinalFallback(ctx: FinalEvaluationContext): FinalReport {
   return {
     overall_score: base,
     category_scores: cats,
-    strengths: [
-      'Completed a practice call.',
-      'Engaged with the customer.',
-      'Kept the conversation moving.',
-    ],
+    // No invented praise, and none at all for a call that never happened.
+    strengths:
+      ctx.sellerTurnCount === 0
+        ? []
+        : ['Completed a practice call.', 'Engaged with the customer.', 'Kept the conversation moving.'],
     missed_opportunities: [
       'Full analysis was unavailable for this call.',
       'Re-run the call for detailed coaching.',

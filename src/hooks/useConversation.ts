@@ -123,8 +123,11 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
   const start = useCallback(() => engine.start(), [engine]);
   const submit = useCallback((text: string) => void engine.submitSeller(text), [engine]);
   const endCall = useCallback(() => void engine.endCall(), [engine]);
-  const retry = useCallback(() => engine.retry(), [engine]);
+  const retry = useCallback(() => void engine.retry(), [engine]);
   const reset = useCallback(() => {
+    // Dispose the old engine first so any in-flight continuation is discarded
+    // rather than mutating a detached instance.
+    engineRef.current?.dispose();
     engineRef.current = createEngine(config, aiEnabledRef.current);
     setVersion((v) => v + 1);
   }, [config]);

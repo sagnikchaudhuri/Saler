@@ -4,6 +4,7 @@ import type { SalesStage, TranscriptTurn } from '../types';
 import type { StoredSession } from '../persistence/types';
 import type { FinalCategoryScores } from '../final/types';
 import { buildComparison, LIVE_VS_FINAL_NOTE } from '../final/narrative';
+import { evidenceLevel } from '../final/analyze';
 import { SALES_SCENARIO } from '../data/scenario';
 
 const STAGE_LABEL: Record<SalesStage, string> = {
@@ -75,7 +76,11 @@ export function FinalReport({
   const diff = r.overall_score - session.liveAverage;
   const diffLabel = diff > 0 ? `+${diff}` : String(diff);
   const objectionRaised = session.objectionsRaised.length > 0;
-  const limitedEvidence = session.sellerTurnCount <= 2;
+  // Minimum-evidence policy: a call with no substantive turns is not scored,
+  // and a thin one is qualified rather than presented with false precision.
+  const evidence = evidenceLevel(session.sellerTurnCount, session.scoreHistory);
+  const notScored = evidence === 'none';
+  const limitedEvidence = evidence === 'limited';
   const trend = session.scoreHistory.map((h) => h.visibleOverall);
 
   return (
@@ -95,11 +100,18 @@ export function FinalReport({
         {session.demoMode && <Badge>Demo Mode</Badge>}
       </div>
 
+      {notScored && (
+        <p role="status" className="mt-6 rounded-lg bg-caution/5 p-3 text-sm text-caution">
+          Not scored: no seller turns were recorded, so there is no performance
+          to measure. Start a call and speak with Rohan to get a full report.
+        </p>
+      )}
+
       {limitedEvidence && (
         <p role="status" className="mt-6 rounded-lg bg-caution/5 p-3 text-sm text-caution">
           Limited evidence: this call had {session.sellerTurnCount} seller turn
-          {session.sellerTurnCount === 1 ? '' : 's'}, so these findings are
-          indicative rather than conclusive.
+          {session.sellerTurnCount === 1 ? '' : 's'} with little substance, so
+          these findings are indicative rather than conclusive.
         </p>
       )}
 
@@ -116,9 +128,17 @@ export function FinalReport({
 
       {/* Only now, the score. */}
       <div className="mt-10 grid grid-cols-3 gap-6 border-y border-line py-6">
-        <StatTile label="Final Score" value={r.overall_score} hint="whole conversation" />
-        <StatTile label="Live Average" value={session.liveAverage} hint="turn by turn" />
-        <StatTile label="Difference" value={diffLabel} hint="final vs live" />
+        <StatTile
+          label="Final Score"
+          value={notScored ? '—' : r.overall_score}
+          hint={notScored ? 'not scored' : 'whole conversation'}
+        />
+        <StatTile
+          label="Live Average"
+          value={notScored ? '—' : session.liveAverage}
+          hint="turn by turn"
+        />
+        <StatTile label="Difference" value={notScored ? '—' : diffLabel} hint="final vs live" />
       </div>
 
       {/* The two moments that matter most. */}
@@ -181,11 +201,17 @@ export function FinalReport({
           <div className="grid gap-8 sm:grid-cols-2">
             <div>
               <div className="eyebrow text-positive">Strengths</div>
-              <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink-secondary">
-                {r.strengths.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ul>
+              {r.strengths.length === 0 ? (
+                <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+                  No clear strengths could be established from this call.
+                </p>
+              ) : (
+                <ul className="mt-3 space-y-2 text-sm leading-relaxed text-ink-secondary">
+                  {r.strengths.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div>
               <div className="eyebrow text-caution">Missed opportunities</div>

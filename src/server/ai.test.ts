@@ -279,8 +279,9 @@ describe('/api/evaluate-final', () => {
     expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
   });
 
-  it('rejects a report with the wrong number of strengths', async () => {
-    const bad = { ...baseReport, strengths: ['only one'] };
+  it('rejects a report with too many strengths', async () => {
+    // Strengths are now 0–3 (evidence-based); more than three is still invalid.
+    const bad = { ...baseReport, strengths: ['a', 'b', 'c', 'd'] };
     const fetchImpl = vi.fn().mockResolvedValue(modelResponse(bad)) as unknown as typeof fetch;
     expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
   });
