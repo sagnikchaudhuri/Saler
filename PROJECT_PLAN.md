@@ -425,15 +425,37 @@ separate, later phase.
 - [x] typecheck · lint · build green; bundle secret scan clean.
 - See `docs/SCORING_CALIBRATION.md` for formulas, weights, and epoch/retry design.
 
+### Repair Phase 2 — AI route security & deterministic final authority  `[x]`
+- [x] **All AI routes guarded** (`aiGuard`): same-origin check, per-client rate
+  limit, and a capability requirement — shared by the Vercel adapters and the
+  Vite dev middleware so local and prod cannot drift. Errors stay generic.
+- [x] **Capability token** (`capability.ts`): short-lived HMAC token, server-only
+  secret (`AI_CAPABILITY_SECRET`), issued from `GET /api/ai-capability`, sent as
+  `x-saler-capability`. Dev-safe when no secret is set. Never stored in a session.
+- [x] **Deterministic final-score authority**: `/api/evaluate-final` returns
+  NARRATIVE ONLY and rejects any score/objection field; the client recomputes
+  every number with the Repair-Phase-1 analysis. A model `overall_score:100` is
+  rejected. Independent fallback to the Demo evaluator preserved.
+- [x] **Narrative grounding** (`validateAiNarrative`): length/item caps, no
+  markup/control chars, verbatim quotes only, fabricated-fact numerals rejected,
+  missed-question de-duplication; plus capped/screened real-time feedback text.
+- [x] **Prompt-injection hardening**: transcript delimited as DATA in every
+  prompt; deterministic scoring immune regardless of model behaviour.
+- [x] Tests: +60 (capability, guard, narrative grounding, score authority,
+  injection, client capability/aiFetch). Suite **638**, all green. Security
+  probes (100/route volume, cross-origin, missing/expired capability, malformed
+  content-type, oversized body, injected scores/facts) — all pass. typecheck ·
+  lint · build green; tracked-source and built-bundle secret scans clean (no
+  key, prompt, capability secret, or `createHmac` in the client bundle).
+- [x] Docs: README security section, INTERVIEW_GUIDE, SCORING_CALIBRATION §6–9.
+
 ### Deferred (later repair phases)
-- [ ] **AI-route abuse controls** (rate-limit `/api/conversation`,
-  `/api/evaluate-turn`, `/api/evaluate-final`; origin checks). **[!] Do not
-  deploy with `OPENAI_API_KEY` set until done.**
-- [ ] Recompute LLM final `overall_score`/`category_scores` deterministically.
-- [ ] Ground/cap remaining LLM free-text report fields.
+- [ ] Replace in-memory rate limiter with a shared store for a distributed quota.
 - [ ] ErrorBoundary + `localStorage` quota handling.
 - [ ] A11y: navbar touch targets ≥ 24px, darken `ink-muted` to meet 4.5:1.
 - [ ] `beforeunload` guard for an in-progress call.
+- [ ] Live-AI verification once the OpenAI account has credit (all AI behaviour
+  is currently proven against mocks only).
 
 ---
 

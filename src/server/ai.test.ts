@@ -234,22 +234,17 @@ describe('/api/evaluate-turn', () => {
 
 describe('/api/evaluate-final', () => {
   const sellerLine = 'How do you currently train new reps?';
-  const baseReport = {
-    overall_score: 60,
-    category_scores: {
-      opening_and_confidence: 60, discovery_questions: 60, problem_identification: 60,
-      value_articulation: 60, objection_handling: 60, clarity_and_conciseness: 60,
-      closing_and_next_step: 60,
-    },
-    strengths: ['a', 'b', 'c'],
-    missed_opportunities: ['x', 'y', 'z'],
+  // The route now accepts NARRATIVE ONLY — no scores. Scores are recomputed
+  // deterministically on the client.
+  const baseNarrative = {
+    strengths: ['Asked about the current onboarding process.'],
+    missed_opportunities: ['Did not quantify impact.', 'No next step.', 'No decision-maker.'],
     strongest_statement: sellerLine,
     weakest_statement: '',
-    better_response: 'better',
-    missed_discovery_questions: ['q'],
-    objection_results: [],
-    recommended_practice: 'practice',
-    summary: 'summary',
+    better_response: 'Try quantifying the impact before pitching.',
+    missed_discovery_questions: ['What timeline are you targeting?'],
+    recommended_practice: 'Practice quantifying impact.',
+    summary: 'A solid opening question, thin on impact.',
   };
   const body = {
     transcript: [{ speaker: 'seller', message: sellerLine }],
@@ -258,30 +253,44 @@ describe('/api/evaluate-final', () => {
     finalStage: 'discovery',
   };
 
-  it('returns a validated report', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(modelResponse(baseReport)) as unknown as typeof fetch;
+  it('returns a validated narrative with no score fields', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(modelResponse(baseNarrative)) as unknown as typeof fetch;
     const r = await handleEvaluateFinalRequest(post(body), cfg(fetchImpl));
     expect(r.status).toBe(200);
+    // The route must never emit a score — deterministic code owns those.
+    expect(r.body).not.toHaveProperty('overall_score');
+    expect(r.body).not.toHaveProperty('category_scores');
   });
 
   it('rejects an invented strongest statement', async () => {
-    const bad = { ...baseReport, strongest_statement: 'I never said this.' };
+    const bad = { ...baseNarrative, strongest_statement: 'I never said this.' };
     const fetchImpl = vi.fn().mockResolvedValue(modelResponse(bad)) as unknown as typeof fetch;
     expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
   });
 
-  it('rejects an invented objection', async () => {
+  it('rejects a narrative that tries to smuggle in a score', async () => {
+    const bad = { ...baseNarrative, overall_score: 100 };
+    const fetchImpl = vi.fn().mockResolvedValue(modelResponse(bad)) as unknown as typeof fetch;
+    expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
+  });
+
+  it('rejects a narrative that tries to supply objection results', async () => {
     const bad = {
-      ...baseReport,
-      objection_results: [{ objection: 'Something never raised', handled: false, explanation: 'e' }],
+      ...baseNarrative,
+      objection_results: [{ objection: 'Something never raised', handled: true, explanation: 'e' }],
     };
     const fetchImpl = vi.fn().mockResolvedValue(modelResponse(bad)) as unknown as typeof fetch;
     expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
   });
 
-  it('rejects a report with too many strengths', async () => {
-    // Strengths are now 0–3 (evidence-based); more than three is still invalid.
-    const bad = { ...baseReport, strengths: ['a', 'b', 'c', 'd'] };
+  it('rejects a narrative with too many strengths', async () => {
+    const bad = { ...baseNarrative, strengths: ['a', 'b', 'c', 'd'] };
+    const fetchImpl = vi.fn().mockResolvedValue(modelResponse(bad)) as unknown as typeof fetch;
+    expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
+  });
+
+  it('rejects a narrative with an invented team-size fact', async () => {
+    const bad = { ...baseNarrative, summary: 'You never asked about their 400 reps.' };
     const fetchImpl = vi.fn().mockResolvedValue(modelResponse(bad)) as unknown as typeof fetch;
     expect((await handleEvaluateFinalRequest(post(body), cfg(fetchImpl))).status).toBe(502);
   });

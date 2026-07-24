@@ -42,6 +42,23 @@ export interface FinalReport {
   summary: string;
 }
 
+/**
+ * Narrative-only fields an AI final evaluator is allowed to produce. It carries
+ * NO scores: overall_score, category_scores, and objection handled/results are
+ * computed deterministically from grounded evidence and merged in by the
+ * client. This is what keeps the LLM out of scoring entirely.
+ */
+export interface AiFinalNarrative {
+  strengths: string[];
+  missed_opportunities: string[];
+  strongest_statement: string;
+  weakest_statement: string;
+  better_response: string;
+  missed_discovery_questions: string[];
+  recommended_practice: string;
+  summary: string;
+}
+
 /** When an objection was raised, keyed to a seller-turn number. */
 export interface ObjectionEvent {
   key: ObjectionKey;

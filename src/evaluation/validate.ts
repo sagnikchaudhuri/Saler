@@ -33,6 +33,20 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
+/** Max length for the evaluator's short coaching strings. */
+const MAX_FEEDBACK_LEN = 240;
+// eslint-disable-next-line no-control-regex
+const CONTROL_OR_MARKUP = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]|```/;
+
+/**
+ * Plain, bounded coaching text. brief_feedback and recommended_next_move are
+ * rendered straight into the live UI, so an LLM (steered by seller text) must
+ * not be able to inject markup, control characters, or an essay through them.
+ */
+function isPlainFeedback(x: unknown): x is string {
+  return typeof x === 'string' && x.length <= MAX_FEEDBACK_LEN && !CONTROL_OR_MARKUP.test(x);
+}
+
 /** Validate an unknown value as a well-formed EvaluatorResult. */
 export function validateEvaluatorResult(x: unknown): ValidationResult {
   if (!isRecord(x)) return { ok: false, error: 'Result is not an object.' };
@@ -49,11 +63,11 @@ export function validateEvaluatorResult(x: unknown): ValidationResult {
       x.turn_quality < 0 || x.turn_quality > 100) {
     return { ok: false, error: 'turn_quality must be a number 0–100.' };
   }
-  if (typeof x.brief_feedback !== 'string') {
-    return { ok: false, error: 'brief_feedback must be a string.' };
+  if (!isPlainFeedback(x.brief_feedback)) {
+    return { ok: false, error: 'brief_feedback must be short plain text.' };
   }
-  if (typeof x.recommended_next_move !== 'string') {
-    return { ok: false, error: 'recommended_next_move must be a string.' };
+  if (!isPlainFeedback(x.recommended_next_move)) {
+    return { ok: false, error: 'recommended_next_move must be short plain text.' };
   }
   if (typeof x.detected_stage !== 'string' || !STAGES.includes(x.detected_stage as SalesStage)) {
     return { ok: false, error: 'detected_stage is not a valid stage.' };

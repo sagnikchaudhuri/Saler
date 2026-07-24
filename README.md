@@ -176,6 +176,37 @@ it was not.
   submitted seller text enters the transcript.
 - System prompts stay server-side and are never returned to the browser.
 
+### AI route protection
+
+The three AI routes (`/api/conversation`, `/api/evaluate-turn`,
+`/api/evaluate-final`) are guarded so they cannot become an open, unmetered
+proxy when a model key is configured. Three layers, all before any model call:
+
+1. **Same-origin.** The request's `Origin` (or `Referer` when `Origin` is
+   absent) must match the request host. Both absent is allowed, so same-origin
+   server-side and test clients still work; a clearly cross-origin browser
+   request is rejected with a generic error.
+2. **Rate limit** per client id. **Honest limitation:** this limiter is
+   in-memory and per serverless instance, so it bounds a single hot instance,
+   not the whole deployment. It is a runaway-loop guard, not a distributed
+   quota, and is written to be swapped for a shared store (e.g. Redis).
+3. **Capability token.** A short-lived, HMAC-signed token fetched from
+   same-origin `GET /api/ai-capability` and sent as `x-saler-capability`. The
+   signing secret (`AI_CAPABILITY_SECRET`) never leaves the server and is not a
+   `VITE_` value. It is **required only when the secret is configured**; with no
+   secret, Demo Mode and local dev work with zero setup (dev-safe). The token
+   carries no secret and is never stored in a saved session.
+
+**Deterministic scoring is authoritative.** The turn evaluator's LLM returns
+signals only; the final evaluator's LLM returns **narrative only**. Every score
+is computed by deterministic TypeScript from the local score history — a model
+that returns `overall_score: 100` is rejected. Transcript text is delimited as
+DATA in every prompt, so prompt injection cannot move a number.
+
+**To expose live AI in production, set both `OPENAI_API_KEY` and
+`AI_CAPABILITY_SECRET`.** With only the former, the routes stay same-origin and
+rate-limited but do not require a capability.
+
 ---
 
 ## Local setup
@@ -202,6 +233,7 @@ All are **server-side and optional**.
 | `LLM_MODEL` | Optional | Defaults to `gpt-4o-mini` |
 | `ELEVENLABS_API_KEY` | Optional | Voice falls back to browser, then Silent Mode |
 | `ELEVENLABS_VOICE_ID` | Optional | Same as above — both are required together |
+| `AI_CAPABILITY_SECRET` | Optional* | AI routes require a signed capability token when set; omitted → dev-safe (no token required). *Set it in production whenever `OPENAI_API_KEY` is set.* |
 
 ---
 

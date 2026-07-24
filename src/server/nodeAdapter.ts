@@ -1,5 +1,6 @@
 import type { AiRequestLike, JsonResult } from './ai';
 import type { LlmConfig } from './llm';
+import { guardAiRequest, type GuardDeps } from './aiGuard';
 
 // ============================================================================
 // Shared Node-style adapter used by both the Vercel functions and the Vite dev
@@ -62,13 +63,41 @@ export function sendJson(res: NodeResponseLike, status: number, body: unknown): 
 
 export type AiRouteCore = (req: AiRequestLike, config: LlmConfig) => Promise<JsonResult>;
 
+/** Per-request security dependencies (rate limiter, capability secret). */
+export type SecurityFactory = () => GuardDeps;
+
+function guardHeaders(req: NodeRequestLike) {
+  return {
+    host: firstHeader(req.headers['host']),
+    origin: firstHeader(req.headers['origin']),
+    referer: firstHeader(req.headers['referer']),
+    capability: firstHeader(req.headers['x-saler-capability']),
+    clientId:
+      firstHeader(req.headers['x-forwarded-for'])?.split(',')[0]?.trim() || 'local',
+  };
+}
+
 /**
  * Wrap a core AI handler as a Node request handler. The config factory is
  * called per request so the key is read from the server environment at call
- * time and never captured anywhere the client can reach.
+ * time and never captured anywhere the client can reach. The optional security
+ * factory runs the shared abuse guard (rate limit → same-origin → capability)
+ * BEFORE any body read or model call, so the route can never be an open proxy.
  */
-export function createAiRoute(core: AiRouteCore, getConfig: () => LlmConfig) {
+export function createAiRoute(
+  core: AiRouteCore,
+  getConfig: () => LlmConfig,
+  getSecurity?: SecurityFactory,
+) {
   return async function handler(req: NodeRequestLike, res: NodeResponseLike): Promise<void> {
+    if (getSecurity) {
+      const guard = guardAiRequest(guardHeaders(req), getSecurity());
+      if (!guard.ok) {
+        sendJson(res, guard.status, { error: { code: guard.code, message: guard.message } });
+        return;
+      }
+    }
+
     let rawBody = '';
     try {
       rawBody = await readNodeBody(req);
@@ -83,6 +112,30 @@ export function createAiRoute(core: AiRouteCore, getConfig: () => LlmConfig) {
       { method: req.method, rawBody, contentType: firstHeader(req.headers['content-type']) },
       getConfig(),
     );
+    sendJson(res, result.status, result.body);
+  };
+}
+
+/**
+ * The capability-issuing route. Same-origin + rate-limited (via the guard,
+ * with capability enforcement disabled — this is the route that mints them),
+ * then returns a token when a signing secret is configured, else `{token:null}`.
+ */
+export function createCapabilityRoute(
+  issue: (now?: number) => JsonResult,
+  getSecurity?: SecurityFactory,
+) {
+  return function handler(req: NodeRequestLike, res: NodeResponseLike): void {
+    if (getSecurity) {
+      // Do not require a capability to GET a capability.
+      const { capabilitySecret: _omit, ...rest } = getSecurity();
+      const guard = guardAiRequest(guardHeaders(req), rest);
+      if (!guard.ok) {
+        sendJson(res, guard.status, { error: { code: guard.code, message: guard.message } });
+        return;
+      }
+    }
+    const result = issue();
     sendJson(res, result.status, result.body);
   };
 }

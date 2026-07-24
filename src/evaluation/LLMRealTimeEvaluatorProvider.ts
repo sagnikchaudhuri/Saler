@@ -2,6 +2,7 @@ import type { EvaluatorResult } from '../types';
 import type { EvaluationContext, RealTimeEvaluatorProvider } from './types';
 import { EvaluatorUnavailableError } from './errors';
 import { validateEvaluatorResult } from './validate';
+import { aiFetch } from '../ai/aiFetch';
 
 export interface LLMEvaluatorConfig {
   /** From the secret-free /api/ai-status probe, never a key in the browser. */
@@ -24,7 +25,8 @@ export class LLMRealTimeEvaluatorProvider implements RealTimeEvaluatorProvider {
   private controller: AbortController | null = null;
 
   constructor(private readonly config: LLMEvaluatorConfig = {}) {
-    this.fetchImpl = config.fetchImpl ?? ((...args) => fetch(...args));
+    // Default to aiFetch so the capability token rides along; tests inject.
+    this.fetchImpl = config.fetchImpl ?? aiFetch;
   }
 
   getName(): string {

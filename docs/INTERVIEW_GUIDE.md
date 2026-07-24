@@ -64,6 +64,25 @@ contract; the deterministic engine owns the arithmetic.
   conditional objection weighting are enforced in one place.
 - Safe: even a compromised or confused model cannot corrupt the score.
 
+This holds for **both** live and final scoring. The turn evaluator's LLM returns
+signals only; the **final** evaluator's LLM returns **narrative only** (strengths,
+summary, coaching prose, verbatim quotes) and *no numbers*. The client recomputes
+overall_score, all category scores, the evidence guard, and objection-handled
+status locally. A model reply that includes `overall_score: 100` is rejected, and
+interpretive text is screened for invented facts (team sizes, percentages, prices,
+dates). So the honest answer to "can the AI inflate a score?" is *no — it never
+touches a number*.
+
+## Why the AI routes need a capability token
+
+Rate limiting alone doesn't stop a scripted client from burning the owner's
+model credit. So the AI routes also require a short-lived, server-signed
+capability token (fetched same-origin, sent as a header). The signing secret is
+server-only — never a `VITE_` value — so nothing in the browser bundle can forge
+one. It's dev-safe: with no secret configured, Demo Mode and local dev need zero
+setup. The rate limiter is honestly in-memory/per-instance (a runaway-loop
+guard, not a distributed quota), written to swap for a shared store.
+
 ## Why providers fall back independently
 
 A single "AI Mode on/off" switch would be brittle — one failing capability

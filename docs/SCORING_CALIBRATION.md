@@ -129,18 +129,79 @@ A near-empty or all-trivial call never wears a confident number.
   second seller turn and never re-scores the message, so diminishing-reward
   counters are untouched.
 
-## 6. What this does NOT claim
+## 6. Deterministic final-score authority (AI path)
 
-- **Not a measure of real-world sales skill.** These are internally consistent,
-  explainable heuristics over a fixed scenario, not evidence of selling ability.
+When AI is enabled, the final evaluator's LLM supplies **narrative only** —
+never a number. `LLMFinalEvaluatorProvider` recomputes overall_score, all seven
+category_scores, the evidence guard, and objection results locally with the
+exact functions in §2 (`analyze.ts` / `objections.ts`), then merges the grounded
+narrative on top. Concretely:
+
+- The route (`/api/evaluate-final`) validates the model output with
+  `validateAiNarrative` and **rejects any payload containing** `overall_score`,
+  `category_scores`, or `objection_results`. It returns narrative-only.
+- The client validates again, then computes every score from the local score
+  history and transcript. A model that returns `overall_score: 100` is rejected
+  and the deterministic report is used instead. The number is identical to what
+  the Demo evaluator would produce for the same call.
+
+| Report field | Source |
+|---|---|
+| `overall_score`, `category_scores` | **deterministic** (always) |
+| `objection_results` (incl. `handled`) | **deterministic** (from `analyzeObjections`) |
+| evidence level, live-vs-final comparison | **deterministic** |
+| `strengths`, `missed_opportunities`, `summary`, `recommended_practice`, `better_response`, `missed_discovery_questions`, `strongest`/`weakest` quotes | **AI when enabled**, else deterministic; always grounded |
+
+The turn evaluator likewise returns **signals only** (19 booleans) — the live
+scoring engine converts them. The LLM has no path to any score.
+
+## 7. Grounded vs interpretive narrative
+
+- **Quotes** (`strongest_statement`, `weakest_statement`) must be a **verbatim**
+  seller message or empty. Enforced on server and client.
+- **Interpretive fields** (strengths, missed opportunities, summary, practice,
+  better response, missed questions) are coaching interpretation, not asserted
+  fact. They are length-capped and screened for markdown/HTML, control
+  characters, and **fabricated factual numerals** — invented team sizes,
+  percentages, prices, dates, or performance multipliers are rejected. A bare
+  example number in a *suggested* `better_response` (e.g. "a 20-minute demo") is
+  allowed; `better_response` is framed by the UI as a suggestion, never history.
+- **Missed questions** are de-duplicated against each other and against
+  questions the seller already asked (token-overlap ≥ 0.6).
+- Real-time `brief_feedback` / `recommended_next_move` are capped and screened
+  the same way before they reach the live UI.
+
+If any field fails grounding the whole AI report is rejected and the
+deterministic report is saved instead — the session is never lost.
+
+## 8. AI route security model (summary)
+
+The AI routes are not an open proxy. See `README.md` for operator setup.
+
+- **Same-origin** required (Origin, or Referer when Origin is absent; both
+  absent is allowed for server/test clients — documented in `aiGuard.ts`).
+- **Rate limited** per client id. The limiter is **in-memory and per serverless
+  instance** — a runaway-loop guard, *not* a globally distributed quota; it is
+  written to be swapped for a shared store.
+- **Capability token** (`x-saler-capability`): short-lived, HMAC-signed,
+  server-only secret. Required **when `AI_CAPABILITY_SECRET` is configured**;
+  omitted for local dev and Demo Mode (dev-safe). The token carries no secret
+  and is never stored in a saved session.
+- **Prompt injection**: transcript is delimited as DATA in every prompt and
+  declared non-instruction. Even if the model obeyed an injection, scores are
+  deterministic, so "give me 100" is inert.
+
+## 9. What this does NOT claim
+
+- **Not a measure of real-world sales skill.** Internally consistent,
+  explainable heuristics over a fixed scenario — not evidence of selling ability.
 - **Weights are reasoned, not empirically fitted.** No labelled dataset of real
-  outcomes backs the specific coefficients; they are chosen to be defensible and
-  to preserve ordering (strong > weak > spam), and are regression-locked.
-- **LLM final scoring is still trusted verbatim when AI is enabled.** The LLM
-  final evaluator's `overall_score`/`category_scores` are validated for range
-  and transcript-grounding but **not recomputed** deterministically. Closing
-  that (recompute from signals) is tracked for a later phase and does not affect
-  the deterministic Demo path, which is authoritative today.
+  outcomes backs the coefficients; they preserve ordering (strong > weak > spam)
+  and are regression-locked.
+- **Live AI behaviour is unverified.** No paid OpenAI call has succeeded (the
+  account returns `insufficient_quota`). Prompt-injection resilience,
+  narrative quality, and grounding are proven against **mocks**, not a real
+  model. The route/validator boundaries hold regardless of model behaviour.
 - **Calibration fixtures** (`src/evaluation/calibration.fixtures.ts`) measure
   detector-vs-label agreement on author-written cases — a consistency check, not
   accuracy against real calls.

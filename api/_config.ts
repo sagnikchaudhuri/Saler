@@ -1,4 +1,7 @@
 import type { LlmConfig } from '../src/server/llm';
+import type { GuardDeps } from '../src/server/aiGuard';
+import { createRateLimiter } from '../src/server/rateLimit';
+import { handleAiCapability, type JsonResult } from '../src/server/ai';
 
 /**
  * Reads LLM credentials from the SERVER environment only. Never imported by
@@ -18,4 +21,20 @@ export function llmConfigFromEnv(): LlmConfig {
     onUpstreamStatus: (status) => console.warn(`[api/ai] upstream responded ${status}`),
     onUpstreamErrorCode: (code) => console.warn(`[api/ai] upstream error code: ${code}`),
   };
+}
+
+// One limiter shared across all three AI routes and the capability route WITHIN
+// a serverless instance. NOTE: instances are ephemeral and independent, so this
+// bounds a single hot instance — it is a runaway-loop guard, not a globally
+// distributed quota. Swap for a shared store to make it deployment-wide.
+const aiLimiter = createRateLimiter({ limit: 40, windowMs: 60_000 });
+
+/** Shared abuse-guard dependencies for the AI routes. */
+export function aiSecurityFromEnv(): GuardDeps {
+  return { rateLimiter: aiLimiter, capabilitySecret: process.env.AI_CAPABILITY_SECRET };
+}
+
+/** Mint a capability token (or `{token:null}` when no secret is configured). */
+export function issueCapability(now?: number): JsonResult {
+  return handleAiCapability(process.env.AI_CAPABILITY_SECRET, now);
 }

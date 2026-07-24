@@ -1,5 +1,6 @@
 import { OBJECTIONS } from '../conversation/types';
 import type {
+  AiFinalNarrative,
   FinalCategoryScores,
   FinalEvaluationContext,
   FinalReport,
@@ -42,6 +43,146 @@ function isScore(x: unknown): x is number {
 }
 function isStringArray(x: unknown): x is string[] {
   return Array.isArray(x) && x.every((v) => typeof v === 'string');
+}
+
+// ============================================================================
+// AI narrative grounding.
+//
+// The AI final evaluator supplies interpretive coaching text only — never
+// scores. Even so, an LLM can be steered by seller-controlled transcript
+// content, so every field is bounded and screened before it is trusted. What
+// cannot be positively proven (strengths, missed opportunities, summary,
+// practice, better response, missed questions) is treated as coaching
+// interpretation and must not smuggle in invented facts about the customer.
+// Quotes (strongest/weakest) must match a real seller message exactly.
+// ============================================================================
+
+/** Control characters (except normal whitespace) never belong in coaching text. */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/;
+/** Markdown / HTML we do not expect in plain coaching prose. */
+const MARKUP = /[<>]|\[[^\]]*\]\([^)]*\)|(^|\s)[*_`#]{1,}\S|```/;
+
+/**
+ * Numerals that read as asserted FACTS about the customer — the exact class the
+ * audit caught being invented (team sizes, percentages, pricing, dates,
+ * performance multipliers). Bare small numbers (e.g. "a 20-minute demo",
+ * "two leads") are allowed; these specific fact-shaped patterns are not.
+ */
+const FABRICATED_FACT =
+  /\d+\s*%|[$£€]\s*\d|\b\d[\d,]*\s*(reps|employees|people|staff|salespeople|agents|customers|users|seats|deals|hours per|percent)\b|\b\d+x\b|\b(19|20)\d{2}\b|\b\d[\d,]{3,}\b/i;
+
+function cleanText(s: unknown, maxLen: number, allowFactNumerals = false): string | null {
+  if (typeof s !== 'string') return null;
+  const t = s.trim();
+  if (t.length > maxLen) return null;
+  if (CONTROL_CHARS.test(t)) return null;
+  if (MARKUP.test(t)) return null;
+  if (!allowFactNumerals && FABRICATED_FACT.test(t)) return null;
+  return t;
+}
+
+function cleanList(x: unknown, maxItems: number, maxLen: number): string[] | null {
+  if (!Array.isArray(x)) return null;
+  if (x.length > maxItems) return null;
+  const out: string[] = [];
+  for (const v of x) {
+    const c = cleanText(v, maxLen);
+    if (c === null) return null;
+    if (c.length > 0) out.push(c);
+  }
+  return out;
+}
+
+/** Cheap token-set similarity, for de-duplicating near-identical questions. */
+function similar(a: string, b: string): boolean {
+  const toks = (s: string) =>
+    new Set(s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 2));
+  const A = toks(a);
+  const B = toks(b);
+  if (A.size === 0 || B.size === 0) return false;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return inter / (A.size + B.size - inter) >= 0.6;
+}
+
+export interface AiNarrativeResult {
+  ok: boolean;
+  value?: AiFinalNarrative;
+  error?: string;
+}
+
+/**
+ * Validate + ground an AI narrative payload. Forbidden score fields cause
+ * rejection outright (the model must not even attempt to score). Quotes are
+ * matched against real seller messages; interpretive fields are screened for
+ * markup, control chars, over-length, and fabricated factual numerals; and
+ * missed questions are de-duplicated against each other and against questions
+ * already asked. Any failure returns `ok: false` so the caller falls back to
+ * the deterministic report.
+ */
+export function validateAiNarrative(
+  x: unknown,
+  refs: FinalValidationRefs,
+): AiNarrativeResult {
+  if (!isRecord(x)) return { ok: false, error: 'Narrative is not an object.' };
+
+  // Reject any attempt to supply scores: the model owns no numbers.
+  if ('overall_score' in x || 'category_scores' in x || 'objection_results' in x) {
+    return { ok: false, error: 'Narrative must not contain score or objection fields.' };
+  }
+
+  const strengths = cleanList(x.strengths, 3, 160);
+  if (strengths === null) return { ok: false, error: 'strengths invalid.' };
+
+  const missed = cleanList(x.missed_opportunities, 3, 160);
+  if (missed === null || missed.length !== 3) {
+    return { ok: false, error: 'missed_opportunities must be 3 clean items.' };
+  }
+
+  // better_response is a SUGGESTED reply — it may contain example specifics, so
+  // fact-numerals are permitted, but markup/control/over-length are not.
+  const better = cleanText(x.better_response, 300, true);
+  if (better === null) return { ok: false, error: 'better_response invalid.' };
+
+  const practice = cleanText(x.recommended_practice, 300);
+  if (practice === null) return { ok: false, error: 'recommended_practice invalid.' };
+
+  const summary = cleanText(x.summary, 600);
+  if (summary === null) return { ok: false, error: 'summary invalid.' };
+
+  // Quotes must be verbatim seller messages (or empty).
+  const strongest = typeof x.strongest_statement === 'string' ? x.strongest_statement : null;
+  const weakest = typeof x.weakest_statement === 'string' ? x.weakest_statement : null;
+  if (strongest === null || weakest === null) return { ok: false, error: 'quotes invalid.' };
+  const quoteOk = (s: string) => s === '' || refs.sellerMessages.has(s);
+  if (!quoteOk(strongest)) return { ok: false, error: 'strongest_statement is not a real seller statement.' };
+  if (!quoteOk(weakest)) return { ok: false, error: 'weakest_statement is not a real seller statement.' };
+
+  // Missed questions: clean, then drop ones already asked or duplicated.
+  const rawQuestions = cleanList(x.missed_discovery_questions, 6, 200);
+  if (rawQuestions === null) return { ok: false, error: 'missed_discovery_questions invalid.' };
+  const asked = [...refs.sellerMessages];
+  const questions: string[] = [];
+  for (const q of rawQuestions) {
+    if (asked.some((m) => similar(q, m))) continue; // already asked
+    if (questions.some((kept) => similar(q, kept))) continue; // duplicate of a kept one
+    questions.push(q);
+  }
+
+  return {
+    ok: true,
+    value: {
+      strengths,
+      missed_opportunities: missed,
+      strongest_statement: strongest,
+      weakest_statement: weakest,
+      better_response: better,
+      missed_discovery_questions: questions,
+      recommended_practice: practice,
+      summary,
+    },
+  };
 }
 
 export function validateFinalReport(

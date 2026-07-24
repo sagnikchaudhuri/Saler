@@ -7,6 +7,7 @@ import type {
 import type { SalesStage } from '../types';
 import { OPENING_LINE } from './persona';
 import { ProviderUnavailableError, InvalidProviderResponseError } from './errors';
+import { aiFetch } from '../ai/aiFetch';
 
 export interface LLMProviderConfig {
   /**
@@ -70,7 +71,9 @@ export class LLMConversationProvider implements ConversationProvider {
 
   constructor(config: LLMProviderConfig = {}) {
     this.config = config;
-    this.fetchImpl = config.fetchImpl ?? ((...args) => fetch(...args));
+    // Default to aiFetch so the capability token is attached to real requests;
+    // tests inject their own fetchImpl and bypass it.
+    this.fetchImpl = config.fetchImpl ?? aiFetch;
   }
 
   getName(): string {

@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 import { handleSpeakRequest } from './src/server/speak';
 import {
   handleAiStatus,
+  handleAiCapability,
   handleConversationRequest,
   handleEvaluateFinalRequest,
   handleEvaluateTurnRequest,
@@ -13,6 +14,8 @@ import {
   type JsonResult,
 } from './src/server/ai';
 import type { LlmConfig } from './src/server/llm';
+import { guardAiRequest } from './src/server/aiGuard';
+import { createRateLimiter } from './src/server/rateLimit';
 
 /**
  * Serves POST /api/speak during `npm run dev` using the SAME core handler as
@@ -91,19 +94,49 @@ function devAiRoutes(env: Record<string, string>): Plugin {
     '/api/evaluate-final': handleEvaluateFinalRequest,
   };
 
+  // Same shared guard as production, so local dev cannot behave more permissively.
+  const limiter = createRateLimiter({ limit: 40, windowMs: 60_000 });
+  const security = () => ({ rateLimiter: limiter, capabilitySecret: env.AI_CAPABILITY_SECRET });
+  const header = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const guardHeaders = (req: { headers: Record<string, string | string[] | undefined> }) => ({
+    host: header(req.headers['host']),
+    origin: header(req.headers['origin']),
+    referer: header(req.headers['referer']),
+    capability: header(req.headers['x-saler-capability']),
+    clientId: header(req.headers['x-forwarded-for'])?.split(',')[0]?.trim() || 'local',
+  });
+  const sendJson = (res: { statusCode: number; setHeader: (k: string, v: string) => void; end: (s: string) => void }, status: number, body: unknown) => {
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify(body));
+  };
+
   return {
     name: 'salessim-dev-ai-routes',
     configureServer(server) {
       server.middlewares.use('/api/ai-status', (_req, res) => {
-        const result = handleAiStatus({ apiKey: env.OPENAI_API_KEY });
-        res.statusCode = result.status;
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Cache-Control', 'no-store');
-        res.end(JSON.stringify(result.body));
+        sendJson(res, 200, handleAiStatus({ apiKey: env.OPENAI_API_KEY }).body);
+      });
+
+      server.middlewares.use('/api/ai-capability', (req, res) => {
+        // Same-origin + rate-limit, but do not require a capability to get one.
+        const { capabilitySecret: _omit, ...rest } = security();
+        const guard = guardAiRequest(guardHeaders(req), rest);
+        if (!guard.ok) {
+          sendJson(res, guard.status, { error: { code: guard.code, message: guard.message } });
+          return;
+        }
+        sendJson(res, 200, handleAiCapability(env.AI_CAPABILITY_SECRET).body);
       });
 
       for (const [path, core] of Object.entries(routes)) {
         server.middlewares.use(path, (req, res) => {
+          const guard = guardAiRequest(guardHeaders(req), security());
+          if (!guard.ok) {
+            sendJson(res, guard.status, { error: { code: guard.code, message: guard.message } });
+            return;
+          }
           const chunks: Uint8Array[] = [];
           req.on('data', (chunk: Uint8Array) => chunks.push(chunk));
           req.on('end', () => {
@@ -123,10 +156,7 @@ function devAiRoutes(env: Record<string, string>): Plugin {
                 },
                 config(),
               );
-              res.statusCode = result.status;
-              res.setHeader('Content-Type', 'application/json');
-              res.setHeader('Cache-Control', 'no-store');
-              res.end(JSON.stringify(result.body));
+              sendJson(res, result.status, result.body);
             })();
           });
         });
