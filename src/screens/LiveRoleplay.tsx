@@ -40,6 +40,7 @@ export function LiveRoleplay({
   coordinator,
   voice,
   customerName = 'Demo Customer',
+  view,
 }: {
   state: ConversationEngineState;
   evaluatorName: string;
@@ -54,6 +55,15 @@ export function LiveRoleplay({
   coordinator?: MediaCoordinator;
   /** Voice-output controller; omitted in tests that don't exercise audio. */
   voice?: UseVoiceOutput;
+  /**
+   * Which viewpoint to emphasise. 'conversation' (A) hides the intelligence
+   * rail; 'readings' (L) hides the conversation column. Undefined shows both.
+   *
+   * CRITICAL: this only toggles CSS visibility — both columns stay mounted, so
+   * switching A ↔ L never remounts the input, speech provider, draft, or any
+   * engine state. The active call is preserved.
+   */
+  view?: 'conversation' | 'readings';
 }) {
   const s = SALES_SCENARIO;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,6 +84,12 @@ export function LiveRoleplay({
     : isBusy
       ? 'thinking'
       : 'idle';
+
+  // View-driven layout. Both columns always render (never unmount) so the call
+  // survives A ↔ L; visibility is toggled with `hidden`.
+  const gridClass = view ? 'grid gap-10' : 'grid gap-10 lg:grid-cols-[1fr_260px]';
+  const conversationHidden = view === 'readings' ? 'hidden' : '';
+  const asideHidden = view === 'conversation' ? 'hidden' : '';
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -107,9 +123,9 @@ export function LiveRoleplay({
         </div>
       </header>
 
-      <div className="grid gap-10 lg:grid-cols-[1fr_260px]">
+      <div className={gridClass}>
         {/* ---------------- The conversation dominates ---------------- */}
-        <div className="min-w-0">
+        <div className={`min-w-0 ${conversationHidden}`}>
           <div
             ref={scrollRef}
             role="log"
@@ -149,8 +165,12 @@ export function LiveRoleplay({
           {voice && <VoiceControls voice={voice} />}
         </div>
 
-        {/* ---------------- Coaching stays quiet and to the side ---------------- */}
-        <aside className="min-w-0 space-y-8 lg:border-l lg:border-line lg:pl-8">
+        {/* ---------------- Coaching: the side rail, or the whole L view ------- */}
+        <aside
+          className={`min-w-0 space-y-8 ${asideHidden} ${
+            view === 'readings' ? '' : 'lg:border-l lg:border-line lg:pl-8'
+          }`}
+        >
           <ConversationHealth
             score={scoreState.visibleOverall}
             momentum={momentum}
