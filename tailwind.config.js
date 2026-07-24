@@ -7,8 +7,10 @@ export default {
         // Editorial light system. One accent, no gradients, hierarchy from
         // type and hairline borders rather than shadows or fills.
         canvas: '#FFFFFF',
-        surface: '#F7F7F5',
-        line: '#EAEAEA',
+        // A hair warmer than neutral grey: paper rather than screen.
+        surface: '#F8F7F4',
+        line: '#E9E7E3',
+        'line-strong': '#DCD9D3',
         ink: {
           DEFAULT: '#111111',
           secondary: '#666666',
@@ -33,6 +35,11 @@ export default {
       letterSpacing: {
         editorial: '-0.03em',
       },
+      boxShadow: {
+        // Depth comes from one soft, low-contrast lift — never a heavy card.
+        lift: '0 1px 2px rgba(17,17,17,0.03), 0 10px 28px -16px rgba(17,17,17,0.14)',
+        dock: '0 1px 16px rgba(15,17,21,0.06)',
+      },
       keyframes: {
         'rise-in': {
           '0%': { opacity: '0', transform: 'translateY(6px)' },
@@ -55,6 +62,11 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // Sections arrive rather than appear — a clearer entrance than a swap.
+        'section-in': {
+          '0%': { opacity: '0', transform: 'translateY(8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
         'ambient-drift': {
           '0%': { transform: 'translateX(-40%)' },
           '100%': { transform: 'translateX(140%)' },
@@ -65,6 +77,7 @@ export default {
         'turn-in': 'turn-in 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
         'pulse-soft': 'pulse-soft 1.8s ease-in-out infinite',
         'app-reveal': 'app-reveal 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
+        'section-in': 'section-in 0.36s cubic-bezier(0.22, 1, 0.36, 1)',
         'ambient-drift': 'ambient-drift 2.2s ease-in-out infinite',
       },
     },

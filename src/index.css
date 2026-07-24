@@ -46,7 +46,13 @@
 @layer components {
   /* Surfaces are defined by hairlines and spacing, not shadows. */
   .card {
-    @apply rounded-xl border border-line bg-canvas p-5;
+    @apply rounded-xl border border-line bg-canvas p-5
+      transition-[border-color,box-shadow,transform] duration-200;
+  }
+
+  /* Restrained lift: enough to read as interactive, never a floating card. */
+  .card-interactive:hover {
+    @apply -translate-y-px border-line-strong shadow-lift;
   }
 
   .panel {
@@ -68,11 +74,12 @@
   }
 
   .btn-primary {
-    @apply btn bg-accent text-white hover:bg-accent-hover;
+    @apply btn bg-accent text-white shadow-[0_1px_2px_rgba(49,92,255,0.24)]
+      hover:bg-accent-hover hover:shadow-[0_2px_10px_-2px_rgba(49,92,255,0.35)];
   }
 
   .btn-ghost {
-    @apply btn border border-line bg-canvas text-ink hover:bg-surface;
+    @apply btn border border-line bg-canvas text-ink hover:border-line-strong hover:bg-surface;
   }
 
   .btn-quiet {
@@ -99,5 +106,10 @@
 
   .numeric {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A quiet separator for editorial rhythm between blocks of a section. */
+  .rule {
+    @apply h-px w-full bg-line;
   }
 }

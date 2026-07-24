@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Layout } from './components/Layout';
-import { CarouselHome } from './components/CarouselHome';
+import { SalerShell } from './components/SalerShell';
 import { ReportIssue } from './components/ReportIssue';
 import { ScenarioBriefing } from './screens/ScenarioBriefing';
 import { LiveRoleplay } from './screens/LiveRoleplay';
@@ -15,6 +14,7 @@ import { createMediaCoordinator } from './media/MediaCoordinator';
 import { useVoiceOutput } from './hooks/useVoiceOutput';
 import { SalerIntro } from './components/SalerIntro';
 import { hasSeenIntro } from './components/introSession';
+import { hasEnteredApp, markAppEntered } from './nav/entrySession';
 import { createSpeechProvider } from './speech/provider';
 import { SALES_SCENARIO } from './data/scenario';
 import type { SectionId } from './nav/sections';
@@ -33,10 +33,14 @@ const SPEECH_SUPPORTED = createSpeechProvider().supported;
 
 export default function App() {
   // SALER is the navigation. `section` is which letter/viewpoint is active;
-  // `mode` is whether we are on the full carousel or inside a section. Neither
-  // ever restarts the conversation, evaluation, or persistence.
+  // `phase` is the homepage versus the application. Neither ever restarts the
+  // conversation, evaluation, or persistence.
   const [section, setSection] = useState<SectionId>('S');
-  const [mode, setMode] = useState<'carousel' | 'inside'>('carousel');
+  // The homepage shows once per browser session. Reading sessionStorage here is
+  // a pure read, so StrictMode re-invoking the initializer is harmless.
+  const [phase, setPhase] = useState<'home' | 'app'>(() =>
+    hasEnteredApp() ? 'app' : 'home',
+  );
   const [historySession, setHistorySession] = useState<StoredSession | null>(null);
   // Which part of a Report Log the user asked to see.
   const [logFocus, setLogFocus] = useState<LogFocus>('evaluation');
@@ -56,7 +60,7 @@ export default function App() {
   const coordinator = coordinatorRef.current;
 
   // A and L are two viewpoints of the SAME live call.
-  const inCallView = mode === 'inside' && (section === 'A' || section === 'L');
+  const inCallView = phase === 'app' && (section === 'A' || section === 'L');
 
   // Voice is only live while actually viewing an in-progress call, never on the
   // carousel, a historical session, a completed call, or before it starts.
@@ -85,32 +89,12 @@ export default function App() {
     speakCustomerTurn(latestCustomerTurn);
   }, [isLiveCall, latestCustomerTurn, speakCustomerTurn]);
 
-  // Expanding back to the carousel: only when already scrolled to the very top
-  // and the user keeps scrolling up. Passive, never hijacks normal scrolling.
-  useEffect(() => {
-    if (mode !== 'inside') return;
-    let accum = 0;
-    const onWheel = (e: WheelEvent) => {
-      if (window.scrollY > 0) {
-        accum = 0;
-        return;
-      }
-      if (e.deltaY < 0) {
-        accum += -e.deltaY;
-        if (accum > 140) {
-          accum = 0;
-          coordinator.stopAll();
-          setMode('carousel');
-        }
-      } else {
-        accum = 0;
-      }
-    };
-    window.addEventListener('wheel', onWheel, { passive: true });
-    return () => window.removeEventListener('wheel', onWheel);
-  }, [mode, coordinator]);
-
   // --- navigation handlers (state is never reset by navigation) ---
+  //
+  // There is deliberately no path back to the homepage: no Home button, no
+  // Escape, and no scroll-up gesture (which also kept the page from ever
+  // hijacking a normal scroll). Leaving mid-call would imply the call had been
+  // discarded, and it hasn't.
 
   /** Switch viewpoint. Leaving the call view stops mic + audio, not the engine. */
   const selectSection = (id: SectionId) => {
@@ -120,12 +104,13 @@ export default function App() {
     // returns Evaluation to this browser's own last completed call.
     if (id !== 'E') setHistorySession(null);
     setSection(id);
-    setMode('inside');
+    setPhase('app');
   };
 
-  const expandToCarousel = () => {
-    coordinator.stopAll();
-    setMode('carousel');
+  /** The one-time entrance from the homepage. */
+  const enterSection = (id: SectionId) => {
+    markAppEntered();
+    selectSection(id);
   };
 
   /** Begin (or restart) the roleplay — the one place a fresh engine is made. */
@@ -134,7 +119,7 @@ export default function App() {
     setHistorySession(null);
     if (status === 'Completed') convo.reset();
     setSection('A');
-    setMode('inside');
+    setPhase('app');
   };
 
   const handleEndCall = () => {
@@ -142,14 +127,14 @@ export default function App() {
     convo.endCall();
     setHistorySession(null);
     setSection('E');
-    setMode('inside');
+    setPhase('app');
   };
 
   const openHistorySession = (session: StoredSession, focus: LogFocus = 'evaluation') => {
     setHistorySession(session);
     setLogFocus(focus);
     setSection('E');
-    setMode('inside');
+    setPhase('app');
   };
 
   const reportSession = historySession ?? convo.state.completedSession;
@@ -186,69 +171,63 @@ export default function App() {
       )}
 
       <div className={revealing ? 'animate-app-reveal' : undefined}>
-        {mode === 'carousel' ? (
-          <CarouselHome
-            onSelect={selectSection}
-            previews={previews}
-            demoMode={convo.state.demoMode}
-          />
-        ) : (
-          <Layout
-            active={section}
-            onSelect={selectSection}
-            onExpand={expandToCarousel}
-            demoMode={convo.state.demoMode}
-          >
-            {section === 'S' && (
-              <ScenarioBriefing
+        <SalerShell
+          phase={phase}
+          section={section}
+          onSelect={selectSection}
+          onEnter={enterSection}
+          previews={previews}
+          demoMode={convo.state.demoMode}
+        >
+          {section === 'S' && (
+            <ScenarioBriefing
+              onStart={startRoleplay}
+              speechSupported={SPEECH_SUPPORTED}
+              voiceProviderName={voice.providerName}
+              customerLabel={honestCustomerLabel}
+            />
+          )}
+
+          {/* A and L share ONE LiveRoleplay instance at a stable position, so
+              switching viewpoint preserves the active call entirely. */}
+          {(section === 'A' || section === 'L') && (
+            <LiveRoleplay
+              state={convo.state}
+              evaluatorName={convo.evaluatorName}
+              customerName={honestCustomerLabel}
+              onSubmit={convo.submit}
+              onRetry={convo.retry}
+              onEndCall={handleEndCall}
+              coordinator={coordinator}
+              voice={voice}
+              view={section === 'L' ? 'readings' : 'conversation'}
+            />
+          )}
+
+          {section === 'E' && (
+            <FinalReport
+              session={reportSession}
+              onReplay={startRoleplay}
+              onBriefing={() => selectSection('S')}
+              onHistory={() => selectSection('R')}
+              onStart={startRoleplay}
+              focusTranscript={historySession !== null && logFocus === 'transcript'}
+            />
+          )}
+
+          {section === 'R' && (
+            <div className="space-y-12">
+              <SessionHistory
+                onOpen={openHistorySession}
                 onStart={startRoleplay}
-                speechSupported={SPEECH_SUPPORTED}
-                voiceProviderName={voice.providerName}
-                customerLabel={honestCustomerLabel}
+                recoveryWarning={STARTUP_RECOVERY_WARNING}
               />
-            )}
-
-            {/* A and L share ONE LiveRoleplay instance at a stable position, so
-                switching viewpoint preserves the active call entirely. */}
-            {(section === 'A' || section === 'L') && (
-              <LiveRoleplay
-                state={convo.state}
-                evaluatorName={convo.evaluatorName}
-                customerName={honestCustomerLabel}
-                onSubmit={convo.submit}
-                onRetry={convo.retry}
-                onEndCall={handleEndCall}
-                coordinator={coordinator}
-                voice={voice}
-                view={section === 'L' ? 'readings' : 'conversation'}
-              />
-            )}
-
-            {section === 'E' && (
-              <FinalReport
-                session={reportSession}
-                onReplay={startRoleplay}
-                onBriefing={() => selectSection('S')}
-                onHistory={() => selectSection('R')}
-                onStart={startRoleplay}
-                focusTranscript={historySession !== null && logFocus === 'transcript'}
-              />
-            )}
-
-            {section === 'R' && (
-              <div className="space-y-12">
-                <SessionHistory
-                  onOpen={openHistorySession}
-                  onStart={startRoleplay}
-                  recoveryWarning={STARTUP_RECOVERY_WARNING}
-                />
-                <div className="mx-auto max-w-3xl">
-                  <ReportIssue />
-                </div>
+              <div className="mx-auto max-w-3xl">
+                <ReportIssue />
               </div>
-            )}
-          </Layout>
-        )}
+            </div>
+          )}
+        </SalerShell>
       </div>
     </>
   );
