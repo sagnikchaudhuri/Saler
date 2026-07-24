@@ -126,6 +126,29 @@ export function LiveRoleplay({
       <div className={gridClass}>
         {/* ---------------- The conversation dominates ---------------- */}
         <div className={`min-w-0 ${conversationHidden}`}>
+          {/* A-view only: a quiet line of context. Full readings live in L, so
+              this deliberately shows just health, stage, and the next move —
+              never the metric breakdown — and stays subordinate to the words. */}
+          {view === 'conversation' && (
+            <div className="mb-6 flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b border-line pb-4">
+              <span className="flex items-baseline gap-1.5">
+                <span className="eyebrow">Health</span>
+                <span className="numeric text-lg font-semibold text-ink">
+                  {scoreState.visibleOverall}
+                </span>
+                <span className="text-xs text-ink-muted">{momentum}</span>
+              </span>
+              <span className="flex items-baseline gap-1.5">
+                <span className="eyebrow">Stage</span>
+                <span className="text-sm text-ink">{STAGE_LABEL[state.stage]}</span>
+              </span>
+              <span className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
+                <span className="eyebrow">Next move</span>
+                <span className="ml-1.5 text-sm text-ink-secondary">{nextMove}</span>
+              </span>
+            </div>
+          )}
+
           <div
             ref={scrollRef}
             role="log"
