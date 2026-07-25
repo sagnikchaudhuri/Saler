@@ -1,6 +1,6 @@
-import type { AiRequestLike, JsonResult } from './ai';
-import type { LlmConfig } from './llm';
-import { guardAiRequest, type GuardDeps } from './aiGuard';
+import type { AiRequestLike, JsonResult } from './ai.js';
+import type { LlmConfig } from './llm.js';
+import { guardAiRequest, type GuardDeps } from './aiGuard.js';
 
 // ============================================================================
 // Shared Node-style adapter used by both the Vercel functions and the Vite dev
