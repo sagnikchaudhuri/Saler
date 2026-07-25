@@ -295,7 +295,7 @@ function CallStatus({ state }: { state: ConversationEngineState }) {
   if (state.status === 'Completed') return <Badge>Ended</Badge>;
   if (state.status === 'Error') return <Badge tone="bad">Error</Badge>;
   if (state.status === 'Evaluating') return <Badge tone="accent">Scoring…</Badge>;
-  if (state.status === 'GeneratingReply') return <Badge tone="accent">Rohan is replying…</Badge>;
+  if (state.status === 'GeneratingReply') return <Badge tone="accent">Divika is replying…</Badge>;
   if (state.status === 'Idle') return <Badge>Not started</Badge>;
   return <Badge tone="good">Live</Badge>;
 }
