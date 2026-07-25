@@ -6,7 +6,6 @@ import type { EvaluatorResult } from '../types';
 function result(signals = emptySignals()): EvaluatorResult {
   return {
     signals,
-    turn_quality: 50,
     brief_feedback: 'fb',
     recommended_next_move: 'next',
     detected_stage: 'discovery',

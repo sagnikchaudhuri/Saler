@@ -18,6 +18,32 @@ import {
 //   - change notifications so the UI re-renders
 // ============================================================================
 
+/**
+ * Typed outcome of a save. The caller never gets an uncaught exception, and it
+ * can tell a real success (possibly after evicting older logs) from a failure
+ * it must surface — so the UI never silently claims a session was saved.
+ */
+export type SaveOutcome =
+  | { ok: true; evicted: number }
+  | { ok: false; reason: 'quota' | 'unavailable' | 'error' };
+
+/** Classify a storage write failure without trusting any single browser's naming. */
+function classifyStorageError(e: unknown): 'quota' | 'unavailable' | 'error' {
+  if (e instanceof DOMException) {
+    // Quota is spelled differently across browsers; also legacy numeric codes.
+    if (
+      e.name === 'QuotaExceededError' ||
+      e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      e.code === 22 ||
+      e.code === 1014
+    ) {
+      return 'quota';
+    }
+    if (e.name === 'SecurityError') return 'unavailable';
+  }
+  return 'error';
+}
+
 /** In-memory fallback storage (used when localStorage is unavailable / in tests). */
 export class MemoryStorage implements StorageLike {
   private map = new Map<string, string>();
@@ -97,17 +123,33 @@ export class SessionRepository {
       // If we dropped anything malformed, note it and rewrite clean storage.
       if (migrated.length !== parsed.length) {
         this.recoveryWarning = 'Some saved sessions could not be read and were skipped.';
-        this.persist();
+        this.persistQuietly();
       }
     } catch {
       this.cache = [];
       this.recoveryWarning = 'Saved session data was corrupted and has been reset.';
-      this.storage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify([]));
+      // Best-effort reset; must not throw during construction on locked storage.
+      try {
+        this.storage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify([]));
+      } catch {
+        // ignore — memory cache is already empty.
+      }
     }
   }
 
+  /** Write the current cache. May throw — callers decide how to react. */
   private persist(): void {
     this.storage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(this.cache));
+  }
+
+  /** Persist, swallowing any error (for delete/clear where losing the write is harmless). */
+  private persistQuietly(): void {
+    try {
+      this.persist();
+    } catch {
+      // A failed delete/clear write is non-fatal: the in-memory cache is
+      // already correct and the app must never crash on storage.
+    }
   }
 
   private emit(): void {
@@ -133,28 +175,65 @@ export class SessionRepository {
   /**
    * Save a completed session. Idempotent by id: saving the same id again
    * replaces the existing row rather than adding a duplicate.
+   *
+   * Never throws. On a quota failure it evicts the OLDEST retained logs (never
+   * the one just saved) and retries exactly once; if that still fails it keeps
+   * only the newest log in memory so the report stays intact, and reports the
+   * failure so the UI can say the session could not be saved. Storage that is
+   * unavailable or erroring is reported, not fatal.
    */
-  save(session: StoredSession): void {
+  save(session: StoredSession): SaveOutcome {
     const withoutDupe = this.cache.filter((s) => s.id !== session.id);
     const next = [session, ...withoutDupe]
       .sort((a, b) => b.endTime - a.endTime)
       .slice(0, this.maxSessions);
     this.cache = next;
-    this.persist();
-    this.emit();
+
+    try {
+      this.persist();
+      this.emit();
+      return { ok: true, evicted: 0 };
+    } catch (e) {
+      const reason = classifyStorageError(e);
+      if (reason !== 'quota') {
+        // Unavailable / security / unknown: the in-memory cache still holds the
+        // report; we simply could not write it. Notify listeners so the list
+        // reflects memory, and report the failure.
+        this.emit();
+        return { ok: false, reason };
+      }
+
+      // Quota: shed the oldest half (newest-first, so slice from the front)
+      // and retry ONCE. Never drop the session we were asked to save (index 0).
+      const keep = Math.max(1, Math.floor(next.length / 2));
+      const evicted = next.length - keep;
+      this.cache = next.slice(0, keep);
+      try {
+        this.persist();
+        this.emit();
+        return { ok: true, evicted };
+      } catch {
+        // Still over quota: preserve just the newest in memory (and best-effort
+        // on disk) so the report survives, and report that the save failed.
+        this.cache = [session];
+        this.persistQuietly();
+        this.emit();
+        return { ok: false, reason: 'quota' };
+      }
+    }
   }
 
   delete(id: string): void {
     const next = this.cache.filter((s) => s.id !== id);
     if (next.length === this.cache.length) return;
     this.cache = next;
-    this.persist();
+    this.persistQuietly();
     this.emit();
   }
 
   clearAll(): void {
     this.cache = [];
-    this.persist();
+    this.persistQuietly();
     this.emit();
   }
 

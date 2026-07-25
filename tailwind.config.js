@@ -12,9 +12,11 @@ export default {
         line: '#E9E7E3',
         'line-strong': '#DCD9D3',
         ink: {
-          DEFAULT: '#111111',
-          secondary: '#666666',
-          muted: '#8A8A8A',
+          DEFAULT: '#111111', // 18.1:1 on white
+          secondary: '#666666', // 5.74:1 on white — AA
+          // Darkened from #8A8A8A (3.45:1, failed AA) to meet WCAG AA for the
+          // small, meaningful text it carries (nav labels, footer, hints).
+          muted: '#737373', // 4.74:1 on white — AA
         },
         accent: {
           DEFAULT: '#315CFF',

@@ -2,7 +2,6 @@ import type { EvaluatorResult } from '../types';
 import type { EvaluationContext, RealTimeEvaluatorProvider } from './types';
 import { detectSignals } from './detect';
 import {
-  computeTurnQuality,
   detectStageFromSignals,
   pickFeedback,
   pickNextMove,
@@ -27,7 +26,6 @@ export class DemoRealTimeEvaluatorProvider implements RealTimeEvaluatorProvider 
     const signals = detectSignals(ctx);
     return {
       signals,
-      turn_quality: computeTurnQuality(signals),
       brief_feedback: pickFeedback(signals),
       recommended_next_move: pickNextMove(ctx, signals),
       detected_stage: detectStageFromSignals(ctx, signals),

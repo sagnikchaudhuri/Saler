@@ -70,14 +70,28 @@ export interface EvaluatorSignals {
   made_unsupported_claim: boolean;
 }
 
-/** The full structured result of evaluating one seller turn. */
+/**
+ * The full structured result of evaluating one seller turn.
+ *
+ * NOTE: there is deliberately no numeric "turn_quality" here. Live scoring is
+ * derived solely from `signals` by the deterministic scoring engine; a separate
+ * per-turn number would be either redundant or a second, unowned score. The
+ * `signals` are the single source of truth. `brief_feedback` and
+ * `recommended_next_move` are display-only coaching hints, never scored.
+ */
 export interface EvaluatorResult {
   signals: EvaluatorSignals;
-  turn_quality: number;
   brief_feedback: string;
   recommended_next_move: string;
   detected_stage: SalesStage;
 }
+
+/**
+ * `asked_closed_question` is intentionally retained even though it drives no
+ * live-score delta: the final analysis uses it as opening-quality evidence
+ * (a closed question still counts as engaging on the first turn) and it feeds
+ * the "meaningful turn" density measure. It is evidence, not a scored signal.
+ */
 
 /** A saved roleplay session (persisted to localStorage in Phase 4). */
 export interface SessionRecord {

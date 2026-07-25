@@ -216,3 +216,27 @@ describe('FinalReport — coaching integrity', () => {
     expect(screen.getByText(/Limited evidence/i)).toBeInTheDocument();
   });
 });
+
+describe('FinalReport — save failure', () => {
+  it('shows a non-blocking save warning and still renders the report', () => {
+    render(
+      <FinalReport
+        session={makeSession()}
+        saveWarning="This session could not be saved to local storage (it may be full)."
+        onReplay={vi.fn()}
+        onBriefing={vi.fn()}
+        onHistory={vi.fn()}
+        onStart={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/could not be saved to local storage/i)).toBeInTheDocument();
+    // The report itself is still fully visible — the score is not hidden.
+    expect(tileValue('Final Score')).toBe('58');
+    expect(screen.getByText('Good discovery, weak close.')).toBeInTheDocument();
+  });
+
+  it('does not claim a save warning when the save succeeded', () => {
+    renderReport(makeSession());
+    expect(screen.queryByText(/could not be saved/i)).toBeNull();
+  });
+});

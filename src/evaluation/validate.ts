@@ -59,10 +59,6 @@ export function validateEvaluatorResult(x: unknown): ValidationResult {
     }
   }
 
-  if (typeof x.turn_quality !== 'number' || Number.isNaN(x.turn_quality) ||
-      x.turn_quality < 0 || x.turn_quality > 100) {
-    return { ok: false, error: 'turn_quality must be a number 0–100.' };
-  }
   if (!isPlainFeedback(x.brief_feedback)) {
     return { ok: false, error: 'brief_feedback must be short plain text.' };
   }
@@ -90,7 +86,6 @@ export function emptySignals(): EvaluatorSignals {
 export function safeFallbackResult(stage: SalesStage): EvaluatorResult {
   return {
     signals: emptySignals(),
-    turn_quality: 50,
     brief_feedback: 'Scoring was skipped for this turn.',
     recommended_next_move: 'Continue guiding the conversation.',
     detected_stage: stage,

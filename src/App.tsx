@@ -15,6 +15,7 @@ import { useVoiceOutput } from './hooks/useVoiceOutput';
 import { SalerIntro } from './components/SalerIntro';
 import { hasSeenIntro } from './components/introSession';
 import { hasEnteredApp, markAppEntered } from './nav/entrySession';
+import { useUnloadGuard } from './hooks/useUnloadGuard';
 import { createSpeechProvider } from './speech/provider';
 import { SALES_SCENARIO } from './data/scenario';
 import type { SectionId, NavTarget } from './nav/sections';
@@ -91,6 +92,16 @@ export default function App() {
     if (!isLiveCall || !latestCustomerTurn) return;
     speakCustomerTurn(latestCustomerTurn);
   }, [isLiveCall, latestCustomerTurn, speakCustomerTurn]);
+
+  // Guard against refresh/close only while a call holds meaningful unsaved
+  // state: it is live (not idle, not completed), not a historical report, and
+  // the user has either taken a turn or typed a draft. Only completed sessions
+  // persist, so this is what protects work in progress.
+  const [draftActive, setDraftActive] = useState(false);
+  const hasSellerTurn = convo.state.memory.sellerTurns > 0;
+  const meaningfulCall =
+    isLiveCall && (hasSellerTurn || draftActive);
+  useUnloadGuard(meaningfulCall);
 
   // --- navigation handlers (state is never reset by navigation) ---
   //
@@ -221,12 +232,14 @@ export default function App() {
               coordinator={coordinator}
               voice={voice}
               view={section === 'L' ? 'readings' : 'conversation'}
+              onDraftActiveChange={setDraftActive}
             />
           )}
 
           {section === 'E' && (
             <FinalReport
               session={reportSession}
+              saveWarning={historySession === null ? convo.saveWarning : null}
               onReplay={startRoleplay}
               onBriefing={() => selectSection('S')}
               onHistory={() => selectSection('R')}

@@ -201,7 +201,6 @@ describe('customer payload validation', () => {
 describe('/api/evaluate-turn', () => {
   const validResult = {
     signals: emptySignals(),
-    turn_quality: 60,
     brief_feedback: 'ok',
     recommended_next_move: 'continue',
     detected_stage: 'discovery',

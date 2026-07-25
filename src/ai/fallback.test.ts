@@ -170,7 +170,6 @@ describe('turn evaluator fallback', () => {
       isAvailable: () => true,
       evaluate: async () => ({
         signals: { ...(await new DemoRealTimeEvaluatorProvider().evaluate(evalCtx())).signals },
-        turn_quality: 70,
         brief_feedback: 'ai feedback',
         recommended_next_move: 'ai move',
         detected_stage: 'discovery',

@@ -158,6 +158,8 @@ export class ConversationEngine {
    * reply from this — it never re-appends or re-scores the seller turn.
    */
   private pendingReply: { sellerMessage: string } | null = null;
+  /** This turn's evaluator fallback notice, combined at the end of the turn. */
+  private pendingEvaluatorNotice: string | null = null;
 
   constructor(
     private readonly provider: ConversationProvider,
@@ -362,11 +364,22 @@ export class ConversationEngine {
 
     this.pendingReply = null;
     this.applyReply(sellerMessage, reply);
-    // Surface a mid-call capability change (e.g. AI customer → scripted).
+    // Capability warning reflects THIS turn only: show whichever capability
+    // fell back (customer or evaluator), and clear it when both succeeded — so
+    // a transient blip does not stick for the rest of the call. The permanent
+    // record of every fallback still accumulates in sessionWarnings and is
+    // saved with the completed session.
     const customerNotice = this.options.fallbackNotices?.customer() ?? null;
+    // Record the customer fallback in the permanent history (saved with the
+    // session) even though the LIVE warning below is transient.
+    if (customerNotice) {
+      this.sessionWarnings.push(`Turn ${this.state.memory.sellerTurns}: ${customerNotice}`);
+    }
+    const combined = customerNotice ?? this.pendingEvaluatorNotice ?? null;
+    this.pendingEvaluatorNotice = null;
     this.setState({
       status: 'WaitingForSeller',
-      capabilityWarning: customerNotice ?? this.state.capabilityWarning,
+      capabilityWarning: combined,
     });
   }
 
@@ -442,10 +455,13 @@ export class ConversationEngine {
       objectionActive: this.state.objectionsRaised.length > 0,
     });
 
+    // Remember this turn's evaluator notice so the reply step can combine it
+    // with the customer notice and clear the warning if both succeeded.
+    this.pendingEvaluatorNotice = evaluatorNotice;
     this.setState({
       scoreState,
       evaluatorWarning: warning,
-      capabilityWarning: evaluatorNotice ?? this.state.capabilityWarning,
+      capabilityWarning: evaluatorNotice,
     });
   }
 

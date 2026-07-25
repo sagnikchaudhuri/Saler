@@ -48,6 +48,7 @@ export function FinalReport({
   onHistory,
   onStart,
   focusTranscript = false,
+  saveWarning = null,
 }: {
   session: StoredSession | null;
   onReplay: () => void;
@@ -56,6 +57,8 @@ export function FinalReport({
   onStart: () => void;
   /** Opened via "View Transcript" from a Report Log — expand it immediately. */
   focusTranscript?: boolean;
+  /** Non-blocking notice that this session could not be written to storage. */
+  saveWarning?: string | null;
 }) {
   if (!session) {
     return (
@@ -99,6 +102,12 @@ export function FinalReport({
       <div className="mt-6 flex flex-wrap gap-2">
         {session.demoMode && <Badge>Demo Mode</Badge>}
       </div>
+
+      {saveWarning && (
+        <p role="status" className="mt-6 rounded-lg bg-caution/5 p-3 text-sm text-caution">
+          {saveWarning}
+        </p>
+      )}
 
       {notScored && (
         <p role="status" className="mt-6 rounded-lg bg-caution/5 p-3 text-sm text-caution">

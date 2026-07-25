@@ -152,7 +152,14 @@ export function SalerShell({
       {/* --- landing letters: the homepage as seen on a RETURN visit ---
           A second, deliberately static instance. The docking instance is by
           then the navbar above, and it must stay there: re-using it here would
-          mean animating the letters back down, i.e. replaying the dock. */}
+          mean animating the letters back down, i.e. replaying the dock.
+
+          The navbar above already exposes Home, Ask, Live, Evaluation and
+          Report Logs, so those four large letters are muted here — removed from
+          the a11y tree and tab order to avoid offering the same action twice —
+          while still clickable for sighted users. Scenario is NOT in the navbar,
+          so its large letter stays fully actionable: assistive-tech users reach
+          each destination exactly once, and none becomes unreachable. */}
       {isHome && entered && (
         <div className="fixed inset-x-0 top-[38vh] z-20 flex justify-center">
           <SalerNav
@@ -161,6 +168,7 @@ export function SalerShell({
             onSelect={onSelect}
             previews={previews}
             letterSize={HOME_LETTER}
+            mutedLetters={['A', 'L', 'E', 'R']}
           />
         </div>
       )}

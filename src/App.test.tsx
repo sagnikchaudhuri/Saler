@@ -164,14 +164,32 @@ describe('App — persistent Home', () => {
     expect(within(nav).queryByRole('button', { name: 'Scenario' })).toBeNull();
   });
 
-  it('opens the landing page, keeping the navbar and its large letters', () => {
+  it('opens the landing page, keeping the navbar and the actionable Scenario letter', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
 
-    // The landing layout is back...
+    // Scenario is NOT in the navbar, so its large letter stays actionable —
+    // the only accessible route to the briefing on a return visit.
     expect(screen.getByRole('button', { name: /Open Scenario/i })).toBeInTheDocument();
-    // ...and so is the navbar, because Home is persistent.
+    // The navbar is present, because Home is persistent.
     expect(screen.getByRole('navigation', { name: /Saler sections/i })).toBeInTheDocument();
+  });
+
+  it('exposes each landing destination to assistive tech exactly once', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    // The four navbar-duplicated large letters (A/L/E/R) are muted, so the
+    // accessibility tree holds each action once: Home + Scenario + A/L/E/R.
+    const names = screen
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label'))
+      .filter((n): n is string => n !== null);
+    for (const dup of ['Open Ask — the conversation', 'Open Live readings', 'Open Evaluation', 'Open Report Logs']) {
+      expect(names.filter((n) => n === dup)).toHaveLength(0);
+    }
+    expect(names.filter((n) => n === 'Open Scenario')).toHaveLength(1);
+    expect(names.filter((n) => n === 'Home')).toHaveLength(1);
   });
 
   it('marks Home as the current destination while on the landing page', () => {

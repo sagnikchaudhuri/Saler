@@ -60,6 +60,8 @@ export interface UseConversation {
   aiEnabled: boolean;
   /** Which implementation has actually produced customer turns so far. */
   customerMode: CapabilityMode;
+  /** Set when the completed session could not be written to local storage. */
+  saveWarning: string | null;
   start: () => void;
   submit: (text: string) => void;
   endCall: () => void;
@@ -113,11 +115,23 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
   // Persist exactly once per completed session.
   const savedIds = useRef<Set<string>>(new Set());
   const session = state.completedSession;
+  const [saveWarning, setSaveWarning] = useState<string | null>(null);
   useEffect(() => {
-    if (!session) return;
+    if (!session) {
+      setSaveWarning(null);
+      return;
+    }
     if (savedIds.current.has(session.id)) return;
     savedIds.current.add(session.id);
-    sessionRepository.save(session);
+    const outcome = sessionRepository.save(session);
+    // Never silently claim success: surface a non-blocking warning on failure.
+    setSaveWarning(
+      outcome.ok
+        ? null
+        : outcome.reason === 'unavailable'
+          ? 'This session could not be saved because browser storage is unavailable. Your report is shown below but will not appear in Report Logs.'
+          : 'This session could not be saved to local storage (it may be full). Your report is shown below but may not appear in Report Logs.',
+    );
   }, [session]);
 
   const start = useCallback(() => engine.start(), [engine]);
@@ -136,6 +150,7 @@ export function useConversation(config: CreateProviderConfig = {}): UseConversat
     state,
     providerName: engine.getProviderName(),
     customerMode: engine.getProviderModes().customer,
+    saveWarning,
     evaluatorName: engine.getEvaluatorName(),
     finalEvaluatorName: engine.getFinalEvaluatorName(),
     aiEnabled,

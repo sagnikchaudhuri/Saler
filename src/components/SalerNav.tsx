@@ -40,6 +40,7 @@ export function SalerNav({
   previews,
   letterSize,
   transitionMs = 0,
+  mutedLetters,
 }: {
   mode: 'home' | 'compact';
   /** Current destination, or null when nothing in this row is current. */
@@ -50,7 +51,18 @@ export function SalerNav({
   letterSize: string;
   /** Duration of the home→compact size change, 0 outside the transition. */
   transitionMs?: number;
+  /**
+   * Letters that are DECORATIVE DUPLICATES here because the same action is
+   * already exposed by another row (the compact navbar). They are removed from
+   * the accessibility tree and the tab order — screen-reader and keyboard users
+   * are never offered the same action twice — while pointer clicks still work
+   * for sighted users. Letters NOT in this set (e.g. Scenario, which the navbar
+   * lacks) stay fully actionable, so no destination becomes unreachable.
+   */
+  mutedLetters?: SectionId[];
 }) {
+  const isMuted = (id: string) => mutedLetters?.includes(id as SectionId) ?? false;
+  const allMuted = mutedLetters !== undefined && SECTIONS.every((s) => isMuted(s.id));
   const containerRef = useRef<HTMLDivElement>(null);
   const isHome = mode === 'home';
   const cfg = isHome ? HOME_DOCK : COMPACT_DOCK;
@@ -113,8 +125,12 @@ export function SalerNav({
   return (
     <div
       ref={containerRef}
-      role={isHome ? 'group' : 'navigation'}
-      aria-label={isHome ? 'Choose where to begin' : 'Saler sections'}
+      // The row keeps its distinct role (landing = group, navbar = navigation)
+      // whenever it still exposes at least one action. Only if EVERY letter is
+      // a duplicate does the whole row leave the accessibility tree.
+      role={allMuted ? undefined : isHome ? 'group' : 'navigation'}
+      aria-hidden={allMuted || undefined}
+      aria-label={allMuted ? undefined : isHome ? 'Choose where to begin' : 'Saler sections'}
       onKeyDown={onKeyDown}
       onPointerMove={onPointerMove}
       onPointerLeave={() => setFocus(null)}
@@ -148,7 +164,9 @@ export function SalerNav({
             // Touch has no hover: a press magnifies, matching the pointer feel.
             onPointerDown={() => setFocus(i)}
             onFocus={() => setFocus(i)}
-            aria-current={isActive ? 'page' : undefined}
+            aria-current={!isMuted(sec.id) && isActive ? 'page' : undefined}
+            aria-hidden={isMuted(sec.id) || undefined}
+            tabIndex={isMuted(sec.id) ? -1 : undefined}
             aria-label={isHome ? `Open ${sec.name}` : sec.name}
             style={{
               ...letterStyle(scale, cfg),
@@ -156,7 +174,12 @@ export function SalerNav({
               transitionDuration: transitionMs > 0 ? `${transitionMs}ms` : undefined,
             }}
             className={[
-              'group relative flex shrink-0 snap-center flex-col items-center outline-none',
+              'group relative flex shrink-0 snap-center flex-col items-center justify-center outline-none',
+              // A comfortable, standards-compliant touch target. The GLYPH stays
+              // small (fontSize), but the interactive box is >=44x44 CSS px in
+              // the navbar. Because the dock only ever scales UP (base 1.0), the
+              // hit area can grow but never shrinks below the minimum.
+              isHome ? '' : 'min-h-[44px] min-w-[44px]',
               // The two properties that make the dock: a visual lift and the
               // horizontal room that stops magnified letters colliding.
               'origin-bottom [transform:scale(var(--dock-s))]',

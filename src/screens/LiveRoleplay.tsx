@@ -41,6 +41,7 @@ export function LiveRoleplay({
   voice,
   customerName = 'Demo Customer',
   view,
+  onDraftActiveChange,
 }: {
   state: ConversationEngineState;
   evaluatorName: string;
@@ -64,6 +65,8 @@ export function LiveRoleplay({
    * engine state. The active call is preserved.
    */
   view?: 'conversation' | 'readings';
+  /** Reports a non-empty unsent draft upward for the active-call unload guard. */
+  onDraftActiveChange?: (active: boolean) => void;
 }) {
   const s = SALES_SCENARIO;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -183,6 +186,7 @@ export function LiveRoleplay({
             coordinator={coordinator}
             isOutputSpeaking={voice?.isSpeaking}
             isOutputPreparing={voice?.isPreparing}
+            onDraftActiveChange={onDraftActiveChange}
           />
 
           {voice && <VoiceControls voice={voice} />}

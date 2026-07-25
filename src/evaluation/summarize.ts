@@ -8,26 +8,6 @@ import type { EvaluationContext } from './types';
 // spoken to the seller or passed into the customer persona. Pure functions.
 // ============================================================================
 
-const POSITIVE_KEYS: (keyof EvaluatorSignals)[] = [
-  'asked_open_question', 'identified_pain', 'quantified_impact',
-  'explored_current_process', 'explored_decision_process', 'explored_timeline',
-  'referenced_customer_context', 'acknowledged_objection', 'clarified_objection',
-  'answered_objection', 'confirmed_objection_resolution', 'asked_relevant_follow_up',
-  'proposed_next_step',
-];
-const NEGATIVE_KEYS: (keyof EvaluatorSignals)[] = [
-  'pitched_too_early', 'ignored_customer_statement', 'was_repetitive',
-  'was_too_long', 'made_unsupported_claim',
-];
-
-/** Deterministic 0–100 quality read of a single turn from its signals. */
-export function computeTurnQuality(s: EvaluatorSignals): number {
-  const pos = POSITIVE_KEYS.filter((k) => s[k]).length;
-  const neg = NEGATIVE_KEYS.filter((k) => s[k]).length;
-  const q = 50 + pos * 10 - neg * 15;
-  return Math.max(0, Math.min(100, q));
-}
-
 /** One-line visual feedback, chosen by the most significant signal. */
 export function pickFeedback(s: EvaluatorSignals): string {
   if (s.made_unsupported_claim) return 'Avoid unsupported guarantees — they read as red flags.';

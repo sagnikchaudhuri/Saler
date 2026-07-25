@@ -449,13 +449,44 @@ separate, later phase.
   key, prompt, capability secret, or `createHmac` in the client bundle).
 - [x] Docs: README security section, INTERVIEW_GUIDE, SCORING_CALIBRATION §6–9.
 
-### Deferred (later repair phases)
+### Repair Phase 3 — resilience & accessibility  `[x]`
+- [x] **Touch targets**: every compact navbar control is a ≥44×44 CSS-px hit
+  area (measured 44×44 at rest, growing with the dock, never below 44). The
+  glyph stays small; only the invisible box grew. No overlap; 320/375 fit.
+- [x] **Contrast**: `ink-muted` darkened `#8A8A8A → #737373` (3.45:1 → 4.74:1,
+  browser-measured), meeting WCAG AA for the small meaningful text it carries.
+- [x] **Error containment**: a top-level `ErrorBoundary` renders a minimal
+  recovery screen (Reload / Return to start) instead of a blank page; no stack
+  trace or detail is shown in the UI; dev-only console logging.
+- [x] **localStorage quota**: `save()` returns a typed `SaveOutcome`, never
+  throws; on quota it evicts the oldest and retries once, else preserves the
+  newest in memory and reports failure. The report UI surfaces a non-blocking
+  "could not be saved" notice — it never silently claims success.
+- [x] **Active-call unload guard**: a `beforeunload` warning installs only while
+  a call holds meaningful unsaved state (started, not completed, ≥1 turn or a
+  draft) and is removed on completion / navigation / unmount.
+- [x] **Capability-warning lifecycle**: the live warning reflects the current
+  turn — it clears when the capability recovers — while the full fallback
+  history is still saved with the completed session.
+- [x] **Accessibility tree**: on a return-visit landing page the large letters
+  duplicated by the navbar (A/L/E/R) are muted (aria-hidden, out of tab order,
+  still pointer-clickable); Scenario — which the navbar lacks — stays actionable,
+  so each destination is exposed exactly once and none becomes unreachable.
+- [x] **Dead data**: `turn_quality` removed everywhere (it drove no score and
+  was a second, unowned number); `asked_closed_question` retained and documented
+  as final-analysis evidence, with a test asserting it is still produced.
+- [x] Tests: +27 (ErrorBoundary, quota, unload guard, warning lifecycle, nav
+  a11y/touch, save-failure UI, dead-data). Suite **665**, all green. Browser:
+  44×44 targets, 4.74:1 contrast, single-exposure a11y tree, unload on/off,
+  A↔L preserved with zero extra API calls, no console errors.
+
+### Deferred (later work)
 - [ ] Replace in-memory rate limiter with a shared store for a distributed quota.
-- [ ] ErrorBoundary + `localStorage` quota handling.
-- [ ] A11y: navbar touch targets ≥ 24px, darken `ink-muted` to meet 4.5:1.
-- [ ] `beforeunload` guard for an in-progress call.
 - [ ] Live-AI verification once the OpenAI account has credit (all AI behaviour
   is currently proven against mocks only).
+- [ ] Real screen-reader (NVDA/JAWS/VoiceOver) and real touch-device passes —
+  the a11y/geometry work above is verified structurally and via emulated
+  viewports, not on assistive hardware.
 
 ---
 

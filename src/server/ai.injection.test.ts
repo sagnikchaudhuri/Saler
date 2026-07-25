@@ -151,7 +151,7 @@ describe('fake JSON inside the transcript cannot change the schema', () => {
   it('turn evaluation still requires valid signals regardless of transcript content', async () => {
     // The model returns a proper signals object; the injected JSON in the
     // transcript is just data and does not alter what the route accepts.
-    const valid = { signals: emptySignals(), turn_quality: 40, brief_feedback: 'ok', recommended_next_move: 'ask more', detected_stage: 'discovery' };
+    const valid = { signals: emptySignals(), brief_feedback: 'ok', recommended_next_move: 'ask more', detected_stage: 'discovery' };
     const { fetchImpl } = capturingFetch(valid);
     const r = await handleEvaluateTurnRequest(
       post({

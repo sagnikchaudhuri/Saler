@@ -9,7 +9,6 @@ import type { EvaluationContext } from './types';
 function validResult() {
   return {
     signals: emptySignals(),
-    turn_quality: 60,
     brief_feedback: 'ok',
     recommended_next_move: 'continue',
     detected_stage: 'discovery',
@@ -31,8 +30,11 @@ describe('validateEvaluatorResult', () => {
     expect(validateEvaluatorResult(bad).ok).toBe(false);
   });
 
-  it('rejects out-of-range turn_quality', () => {
-    expect(validateEvaluatorResult({ ...validResult(), turn_quality: 140 }).ok).toBe(false);
+  it('no longer treats turn_quality as a validated score field', () => {
+    // The schema dropped turn_quality; scoring reads only `signals`. A result
+    // without it is valid, and a stray value can never gate validation.
+    expect(validateEvaluatorResult(validResult()).ok).toBe(true);
+    expect(validateEvaluatorResult({ ...validResult(), turn_quality: 140 }).ok).toBe(true);
   });
 
   it('rejects an invalid stage', () => {

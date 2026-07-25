@@ -29,6 +29,7 @@ export function SellerInput({
   coordinator,
   isOutputSpeaking,
   isOutputPreparing,
+  onDraftActiveChange,
 }: {
   canSend: boolean;
   inputError: string | null;
@@ -39,6 +40,8 @@ export function SellerInput({
   coordinator?: MediaCoordinator;
   isOutputSpeaking?: boolean;
   isOutputPreparing?: boolean;
+  /** Reports whether there is a non-empty unsent draft (for the unload guard). */
+  onDraftActiveChange?: (active: boolean) => void;
 }) {
   const speech = useSpeechInput({
     provider: speechProvider,
@@ -49,6 +52,14 @@ export function SellerInput({
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wasListening = useRef(false);
+
+  // Report unsent-draft presence upward for the active-call unload guard, and
+  // clear it on unmount so a stale draft can never keep the warning installed.
+  const draftActive = speech.draft.trim().length > 0;
+  useEffect(() => {
+    onDraftActiveChange?.(draftActive);
+    return () => onDraftActiveChange?.(false);
+  }, [draftActive, onDraftActiveChange]);
 
   // Return focus to the draft once a recognition session ends, so keyboard
   // users land where they can edit.
