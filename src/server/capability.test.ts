@@ -4,8 +4,7 @@ import {
   verifyCapability,
   CAPABILITY_SCOPE,
   CAPABILITY_TTL_MS,
-} from './capability';
-
+} from './capability.js
 const SECRET = 'test-signing-secret-value';
 
 describe('capability token', () => {
