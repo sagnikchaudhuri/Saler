@@ -184,9 +184,10 @@ The AI routes are not an open proxy. See `README.md` for operator setup.
   instance** — a runaway-loop guard, *not* a globally distributed quota; it is
   written to be swapped for a shared store.
 - **Capability token** (`x-saler-capability`): short-lived, HMAC-signed,
-  server-only secret. Required **when `AI_CAPABILITY_SECRET` is configured**;
-  omitted for local dev and Demo Mode (dev-safe). The token carries no secret
-  and is never stored in a saved session.
+  server-only secret; anti-abuse, not user auth. **Fail-closed**: AI is enabled
+  only when `OPENAI_API_KEY` AND `AI_CAPABILITY_SECRET` are both set — a key
+  alone yields `AI_NOT_CONFIGURED` and Demo Mode. Demo Mode itself needs no
+  secrets. The token carries no secret and is never stored in a saved session.
 - **Prompt injection**: transcript is delimited as DATA in every prompt and
   declared non-instruction. Even if the model obeyed an injection, scores are
   deterministic, so "give me 100" is inert.

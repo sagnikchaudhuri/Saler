@@ -9,6 +9,30 @@ probes). No application source was modified during this audit.
 
 ---
 
+> ## Remediation update — Repair Phase 3.1 (`fix: close final deployment readiness gaps`)
+>
+> The two blocking items below have since been fixed and verified:
+>
+> - **M1 (caution contrast)** — `caution` darkened `#B66A08 → #8A5108`:
+>   **6.44:1** on white, **5.98:1** on the `bg-caution/5` banner surface
+>   (browser-confirmed). A palette contrast regression test now reads the real
+>   `tailwind.config.js` values and asserts every meaningful pairing ≥ 4.5:1, so
+>   this class of bug is caught in CI (closes m5).
+> - **m1 (AI security config gate)** — the routes now **fail closed**: AI is
+>   enabled only when `OPENAI_API_KEY` AND `AI_CAPABILITY_SECRET` are both set;
+>   a key alone yields `503 AI_NOT_CONFIGURED` before any model call and an
+>   `/api/ai-status: {enabled:false}`. End-to-end `createAiRoute` integration
+>   tests were added for all three routes (closes missing test #2).
+> - **m4 (guard order)** — reordered to same-origin → rate-limit → fail-closed →
+>   capability, with explicit tests.
+>
+> Suite **716** passing. The remaining findings below (m2 token replay window,
+> m3 per-instance limiter, and all *Unverified Areas*) are unchanged and remain
+> post-deployment / external-credit work. The **READY WITH MINOR FIXES** verdict
+> stands, now with the minor fixes applied.
+
+---
+
 # Executive Summary
 
 Saler's deterministic core is **genuinely solid and the previously-reported

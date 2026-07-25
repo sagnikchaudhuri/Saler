@@ -96,7 +96,18 @@ function devAiRoutes(env: Record<string, string>): Plugin {
 
   // Same shared guard as production, so local dev cannot behave more permissively.
   const limiter = createRateLimiter({ limit: 40, windowMs: 60_000 });
-  const security = () => ({ rateLimiter: limiter, capabilitySecret: env.AI_CAPABILITY_SECRET });
+  const keyConfigured = typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.trim().length > 0;
+  const security = () => ({
+    rateLimiter: limiter,
+    capabilitySecret: env.AI_CAPABILITY_SECRET,
+    apiKeyConfigured: keyConfigured,
+  });
+  // Same one-time fail-closed diagnostic as production (never prints a secret).
+  if (keyConfigured && !env.AI_CAPABILITY_SECRET) {
+    console.warn(
+      '[api/ai] OPENAI_API_KEY is set but AI_CAPABILITY_SECRET is missing — AI is DISABLED (fail-closed). Set AI_CAPABILITY_SECRET to enable AI.',
+    );
+  }
   const header = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const guardHeaders = (req: { headers: Record<string, string | string[] | undefined> }) => ({
     host: header(req.headers['host']),
@@ -116,7 +127,11 @@ function devAiRoutes(env: Record<string, string>): Plugin {
     name: 'salessim-dev-ai-routes',
     configureServer(server) {
       server.middlewares.use('/api/ai-status', (_req, res) => {
-        sendJson(res, 200, handleAiStatus({ apiKey: env.OPENAI_API_KEY }).body);
+        sendJson(
+          res,
+          200,
+          handleAiStatus({ apiKey: env.OPENAI_API_KEY, capabilitySecret: env.AI_CAPABILITY_SECRET }).body,
+        );
       });
 
       server.middlewares.use('/api/ai-capability', (req, res) => {

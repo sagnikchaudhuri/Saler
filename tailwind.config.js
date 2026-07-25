@@ -23,9 +23,11 @@ export default {
           hover: '#2447D8',
           wash: '#F0F3FF',
         },
-        positive: '#15835B',
-        caution: '#B66A08',
-        critical: '#C73E3E',
+        positive: '#15835B', // 4.60:1 on white — AA
+        // Darkened from #B66A08 (4.16:1, failed AA) so warning/notice text meets
+        // WCAG AA on white AND on the bg-caution/5 surface it sits on.
+        caution: '#8A5108', // 6.44:1 on white — AA (amber, distinct from red/green)
+        critical: '#C73E3E', // 5.02:1 on white — AA
       },
       fontFamily: {
         // System stack only — nothing to download, nothing to license.

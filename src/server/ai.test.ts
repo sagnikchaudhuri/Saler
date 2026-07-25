@@ -37,15 +37,29 @@ const VALID_CUSTOMER = {
 };
 
 describe('/api/ai-status', () => {
+  const CAP = 'capability-signing-secret';
+
   it('reports disabled with no key and never leaks anything', () => {
     const r = handleAiStatus({ apiKey: undefined });
     expect(r.body).toEqual({ enabled: false });
   });
 
-  it('reports enabled when a key is present, without exposing it', () => {
+  it('reports DISABLED with a key but no capability secret (fail-closed)', () => {
+    // A key alone must not enable AI — capability protection is mandatory.
     const r = handleAiStatus({ apiKey: SECRET });
+    expect(r.body).toEqual({ enabled: false });
+  });
+
+  it('reports enabled only when key AND capability secret are present', () => {
+    const r = handleAiStatus({ apiKey: SECRET, capabilitySecret: CAP });
     expect(r.body).toEqual({ enabled: true });
-    expect(JSON.stringify(r.body)).not.toContain(SECRET);
+    const s = JSON.stringify(r.body);
+    expect(s).not.toContain(SECRET);
+    expect(s).not.toContain(CAP);
+  });
+
+  it('reports disabled with a capability secret but no key', () => {
+    expect(handleAiStatus({ capabilitySecret: CAP }).body).toEqual({ enabled: false });
   });
 });
 

@@ -73,15 +73,34 @@ interpretive text is screened for invented facts (team sizes, percentages, price
 dates). So the honest answer to "can the AI inflate a score?" is *no — it never
 touches a number*.
 
-## Why the AI routes need a capability token
+## Why the AI routes need a capability token, and why they fail closed
 
 Rate limiting alone doesn't stop a scripted client from burning the owner's
 model credit. So the AI routes also require a short-lived, server-signed
 capability token (fetched same-origin, sent as a header). The signing secret is
 server-only — never a `VITE_` value — so nothing in the browser bundle can forge
-one. It's dev-safe: with no secret configured, Demo Mode and local dev need zero
-setup. The rate limiter is honestly in-memory/per-instance (a runaway-loop
-guard, not a distributed quota), written to swap for a shared store.
+one. The token is **anti-abuse, not user authentication**: it proves a request
+came through a same-origin page load, nothing more.
+
+The key design decision is **fail-closed**: AI turns on only when
+`OPENAI_API_KEY` **and** `AI_CAPABILITY_SECRET` are both set. A key on its own
+leaves AI disabled — `/api/ai-status` reports disabled, the routes return
+`AI_NOT_CONFIGURED` before any model call, and the UI stays in Demo Mode — so a
+stray/ambient key can never become an unauthenticated proxy protected only by
+same-origin + rate limit. That's true in every environment, so there's no
+reliance on detecting "production". The rate limiter is honestly
+in-memory/per-instance (a runaway-loop guard, not a distributed quota), written
+to swap for a shared store.
+
+## How contrast is kept honest
+
+The palette (`tailwind.config.js`) is the single source of truth for colour, and
+a pure `src/theme/contrast.ts` utility computes WCAG ratios. A regression test
+reads the **actual hex values out of the config** (never CSS class strings) and
+asserts every meaningful-text pairing meets AA 4.5:1 on the surfaces it's used
+on — including warning text on its tinted banner. That's how the caution token
+(once 4.16:1, failing) was fixed to `#8A5108` (6.44:1) and how the whole palette
+stays honest under future edits.
 
 ## Why providers fall back independently
 

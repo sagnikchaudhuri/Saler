@@ -142,9 +142,33 @@ function dataLine(label: string, content: string): string {
 
 // --- capability probe -------------------------------------------------------
 
-/** Secret-free: reports only whether AI is configured. */
-export function handleAiStatus(config: Pick<LlmConfig, 'apiKey'>): JsonResult<{ enabled: boolean }> {
-  return { status: 200, body: { enabled: isLlmConfigured(config) } };
+export interface AiStatusConfig {
+  apiKey?: string;
+  /** The AI capability signing secret. Required for AI to be "operational". */
+  capabilitySecret?: string;
+}
+
+/**
+ * True only when AI is FULLY operational: a model key AND a capability signing
+ * secret are both configured. A key without the secret is treated as disabled
+ * (fail-closed) so the UI never claims AI while the routes refuse it, and so an
+ * ambient key can never enable an unprotected proxy. Model/base have safe
+ * defaults, so no further validation is required here.
+ */
+export function isAiOperational(config: AiStatusConfig): boolean {
+  return (
+    isLlmConfigured({ apiKey: config.apiKey }) &&
+    typeof config.capabilitySecret === 'string' &&
+    config.capabilitySecret.trim().length > 0
+  );
+}
+
+/**
+ * Secret-free probe: reports AI as enabled ONLY when the whole configuration is
+ * valid (key + capability secret). Never reveals which value is missing.
+ */
+export function handleAiStatus(config: AiStatusConfig): JsonResult<{ enabled: boolean }> {
+  return { status: 200, body: { enabled: isAiOperational(config) } };
 }
 
 /**

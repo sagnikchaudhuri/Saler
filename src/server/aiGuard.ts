@@ -22,6 +22,8 @@ import { verifyCapability } from './capability';
 
 const GENERIC = 'The AI service is temporarily unavailable.';
 const GENERIC_FORBIDDEN = 'Request not allowed.';
+// Deliberately does not reveal WHICH secret is missing.
+const GENERIC_NOT_CONFIGURED = 'AI features are currently unavailable.';
 
 export interface GuardHeaders {
   host?: string;
@@ -37,12 +39,24 @@ export interface GuardDeps {
   rateLimiter?: RateLimiter;
   /** When set, a valid capability token is required. When unset, dev-safe. */
   capabilitySecret?: string;
+  /**
+   * Whether an OpenAI key is configured. Used for the FAIL-CLOSED gate: a key
+   * with no capability secret means AI is intentionally disabled — the route
+   * refuses rather than becoming an unauthenticated proxy protected only by
+   * same-origin + rate limit.
+   */
+  apiKeyConfigured?: boolean;
   now?: () => number;
 }
 
 export type GuardResult =
   | { ok: true }
-  | { ok: false; status: number; code: 'AI_UNAVAILABLE' | 'INVALID_REQUEST'; message: string };
+  | {
+      ok: false;
+      status: number;
+      code: 'AI_UNAVAILABLE' | 'INVALID_REQUEST' | 'AI_NOT_CONFIGURED';
+      message: string;
+    };
 
 function host(url: string | undefined): string | null {
   if (!url) return null;
@@ -81,15 +95,23 @@ export function checkSameOrigin(
 }
 
 export function guardAiRequest(h: GuardHeaders, deps: GuardDeps): GuardResult {
-  // 1. Rate limit — cheapest check first.
-  if (deps.rateLimiter && !deps.rateLimiter.check(h.clientId || 'local')) {
-    return { ok: false, status: 429, code: 'AI_UNAVAILABLE', message: GENERIC };
-  }
-  // 2. Same-origin.
+  // 1. Same-origin FIRST — the outer boundary. A clearly cross-origin caller is
+  //    rejected before it learns anything about configuration or spends budget.
   if (!checkSameOrigin(h.origin, h.referer, h.host)) {
     return { ok: false, status: 403, code: 'INVALID_REQUEST', message: GENERIC_FORBIDDEN };
   }
-  // 3. Capability — only enforced when a signing secret is configured.
+  // 2. Rate limit.
+  if (deps.rateLimiter && !deps.rateLimiter.check(h.clientId || 'local')) {
+    return { ok: false, status: 429, code: 'AI_UNAVAILABLE', message: GENERIC };
+  }
+  // 3. FAIL CLOSED: a key configured with no capability secret means AI is
+  //    intentionally disabled. Refuse rather than run as a proxy protected only
+  //    by same-origin + rate limit. The message never says which secret is
+  //    missing (that diagnostic is server-side only).
+  if (deps.apiKeyConfigured && !deps.capabilitySecret) {
+    return { ok: false, status: 503, code: 'AI_NOT_CONFIGURED', message: GENERIC_NOT_CONFIGURED };
+  }
+  // 4. Capability — required whenever a signing secret is configured.
   if (deps.capabilitySecret) {
     const now = deps.now?.() ?? Date.now();
     if (!verifyCapability(deps.capabilitySecret, h.capability, now)) {

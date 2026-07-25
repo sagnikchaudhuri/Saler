@@ -480,6 +480,35 @@ separate, later phase.
   44×44 targets, 4.74:1 contrast, single-exposure a11y tree, unload on/off,
   A↔L preserved with zero extra API calls, no console errors.
 
+### Repair Phase 3.1 — final deployment blockers  `[x]`
+Closes the two gaps the fresh re-audit flagged (`docs/PRODUCTION_READINESS_REAUDIT.md`).
+- [x] **Caution contrast** — `caution` darkened `#B66A08 → #8A5108`
+  (**4.16:1 → 6.44:1** on white, **5.98:1** on the `bg-caution/5` banner surface,
+  browser-confirmed rendering `rgb(138,81,8)`). Central token change; all
+  warning/notice/missed-opportunity/input-error text inherits it. `positive`
+  4.60:1, `critical` 5.02:1, `accent` 5.12:1 all pass.
+- [x] **Palette contrast regression tests** — pure `src/theme/contrast.ts`
+  (WCAG luminance/ratio/alpha-blend) + a test that reads the REAL hex values out
+  of `tailwind.config.js` and asserts every meaningful pairing ≥ 4.5:1 (never
+  class strings; large-text exception not used). Would have caught this class of
+  bug in CI.
+- [x] **Fail-closed AI config** — AI is operational ONLY when `OPENAI_API_KEY`
+  AND `AI_CAPABILITY_SECRET` are both set, in every environment. A key without
+  the secret: `/api/ai-status` → disabled, AI routes → `503 AI_NOT_CONFIGURED`
+  before any model call, one server diagnostic (no secret, no "which secret"
+  leak), UI stays Demo Mode. Uses env config, not a client signal. No default
+  secret is ever generated.
+- [x] **Route-level integration tests** — end-to-end through the production
+  `createAiRoute` adapter for all three routes: same-origin+valid-capability
+  reaches core; cross-origin 403; invalid/expired capability 401; rate-limit
+  429; oversized 413; bad content-type 415; fail-closed 503; Demo Mode; no
+  upstream after any rejection; no key/secret/prompt/upstream-body leak; status
+  matches availability; expiry boundary; scope isolation.
+- [x] **Guard order cleanup (optional, taken)** — reordered to same-origin →
+  rate-limit → fail-closed → capability, with explicit ordering tests.
+- [x] Tests: +51 (716 total), all green. typecheck · lint · build clean;
+  tracked-source and built-bundle secret scans clean.
+
 ### Deferred (later work)
 - [ ] Replace in-memory rate limiter with a shared store for a distributed quota.
 - [ ] Live-AI verification once the OpenAI account has credit (all AI behaviour

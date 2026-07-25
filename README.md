@@ -193,9 +193,18 @@ proxy when a model key is configured. Three layers, all before any model call:
 3. **Capability token.** A short-lived, HMAC-signed token fetched from
    same-origin `GET /api/ai-capability` and sent as `x-saler-capability`. The
    signing secret (`AI_CAPABILITY_SECRET`) never leaves the server and is not a
-   `VITE_` value. It is **required only when the secret is configured**; with no
-   secret, Demo Mode and local dev work with zero setup (dev-safe). The token
-   carries no secret and is never stored in a saved session.
+   `VITE_` value. The token carries no secret and is never stored in a saved
+   session. It is **anti-abuse, not user authentication** — it proves a request
+   came through a same-origin page load, nothing more.
+
+**Fail closed.** AI is enabled **only when `OPENAI_API_KEY` AND
+`AI_CAPABILITY_SECRET` are both set** — in every environment. A key **without**
+the secret leaves AI disabled: `/api/ai-status` reports disabled, the AI routes
+return `AI_NOT_CONFIGURED` before any model call, the UI stays in Demo Mode, and
+the server logs one diagnostic (never printing a secret, never revealing which
+value is missing to the browser). This guarantees an ambient key can never turn
+the routes into an unauthenticated proxy. Demo Mode and mocked tests need no
+secrets at all.
 
 **Deterministic scoring is authoritative.** The turn evaluator's LLM returns
 signals only; the final evaluator's LLM returns **narrative only**. Every score
@@ -203,9 +212,8 @@ is computed by deterministic TypeScript from the local score history — a model
 that returns `overall_score: 100` is rejected. Transcript text is delimited as
 DATA in every prompt, so prompt injection cannot move a number.
 
-**To expose live AI in production, set both `OPENAI_API_KEY` and
-`AI_CAPABILITY_SECRET`.** With only the former, the routes stay same-origin and
-rate-limited but do not require a capability.
+> **For live AI (any environment): `OPENAI_API_KEY` and `AI_CAPABILITY_SECRET`
+> must BOTH be configured.** With only the key, AI stays off.
 
 ---
 
@@ -233,7 +241,10 @@ All are **server-side and optional**.
 | `LLM_MODEL` | Optional | Defaults to `gpt-4o-mini` |
 | `ELEVENLABS_API_KEY` | Optional | Voice falls back to browser, then Silent Mode |
 | `ELEVENLABS_VOICE_ID` | Optional | Same as above — both are required together |
-| `AI_CAPABILITY_SECRET` | Optional* | AI routes require a signed capability token when set; omitted → dev-safe (no token required). *Set it in production whenever `OPENAI_API_KEY` is set.* |
+| `AI_CAPABILITY_SECRET` | **Required to enable AI** | **Mandatory alongside `OPENAI_API_KEY`.** Without it AI is fail-closed (disabled) regardless of the key. Demo Mode needs no secrets. |
+
+To turn on live AI you must set **both** `OPENAI_API_KEY` and
+`AI_CAPABILITY_SECRET`; a key on its own keeps AI disabled (fail-closed).
 
 ---
 
