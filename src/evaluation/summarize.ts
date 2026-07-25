@@ -12,7 +12,7 @@ import type { EvaluationContext } from './types';
 export function pickFeedback(s: EvaluatorSignals): string {
   if (s.made_unsupported_claim) return 'Avoid unsupported guarantees — they read as red flags.';
   if (s.pitched_too_early) return "You're pitching before you understand the problem.";
-  if (s.ignored_customer_statement) return 'You skipped over what Rohan just said.';
+  if (s.ignored_customer_statement) return 'You skipped over what Divika just said.';
   if (s.was_too_long) return 'Tighten that up — keep your turns concise.';
   if (s.was_repetitive) return "You've asked this already; move the conversation forward.";
   if (s.answered_objection || s.confirmed_objection_resolution) return 'Good — you engaged the objection directly.';
@@ -31,7 +31,7 @@ export function pickNextMove(ctx: EvaluationContext, s: EvaluatorSignals): strin
   const painNow = s.identified_pain || painBefore;
 
   if (ctx.objectionsRaised.length > 0 && !(s.answered_objection || s.confirmed_objection_resolution)) {
-    return "Address Rohan's open concern before moving on.";
+    return "Address Divika's open concern before moving on.";
   }
   if (!painNow) return 'Ask how new reps are onboarded and trained today.';
   if (painNow && !s.quantified_impact) {
