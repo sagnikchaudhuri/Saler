@@ -7,9 +7,9 @@ import type {
 } from './types';
 
 // ============================================================================
-// Rohan Mehta — deterministic sales persona.
+// Divika Mishra — deterministic sales persona.
 //
-// This module holds ALL of Rohan's behaviour as pure functions so it can be
+// This module holds ALL of Divika's behaviour as pure functions so it can be
 // unit-tested without React, timers, or randomness. Given the same context it
 // always produces the same reply. The Demo provider is a thin wrapper around
 // `selectReply`; the real LLM provider (later) will replace the wrapper, not
@@ -23,7 +23,7 @@ import type {
 // ============================================================================
 
 export const OPENING_LINE =
-  "Hi, this is Rohan Mehta. I've got about ten minutes before my next meeting — what can I do for you?";
+  "Hi, this is Divika Mishra. I've got about ten minutes before my next meeting — what can I do for you?";
 
 // --- keyword vocabularies ---------------------------------------------------
 const PROCESS_WORDS = [
