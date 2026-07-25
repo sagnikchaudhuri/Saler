@@ -1,4 +1,4 @@
-import { callLlmJson, isLlmConfigured, LlmError, type LlmConfig } from './llm';
+import { callLlmJson, isLlmConfigured, LlmError, type LlmConfig } from './llm.ts';
 import {
   CUSTOMER_SYSTEM_PROMPT,
   FINAL_EVALUATOR_SYSTEM_PROMPT,
