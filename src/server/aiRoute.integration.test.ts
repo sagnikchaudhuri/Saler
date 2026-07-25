@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createAiRoute } from './nodeAdapter';
+import { createAiRoute } from './nodeAdapter.js';
 import {
   handleConversationRequest,
   handleEvaluateTurnRequest,
   handleEvaluateFinalRequest,
   handleAiStatus,
-} from './ai';
-import { signCapability } from './capability';
-import { createRateLimiter } from './rateLimit';
-import type { LlmConfig } from './llm';
-import type { GuardDeps } from './aiGuard';
+} from './ai.js';
+import { signCapability } from './capability.js';
+import { createRateLimiter } from './rateLimit.js';
+import type { LlmConfig } from './llm.js';
+import type { GuardDeps } from './aiGuard.js';
 
 // ============================================================================
 // End-to-end route security through the SAME adapter production uses
