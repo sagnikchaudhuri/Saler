@@ -22,10 +22,10 @@ export interface Scenario {
 }
 
 export const SALES_SCENARIO: Scenario = {
-  id: 'rohan-mehta-sales-enablement',
+  id: 'divika-mishra-sales-enablement',
   product: 'An AI sales-roleplay and coaching platform',
   customer: {
-    name: 'Rohan Mehta',
+    name: 'Divika Mishra',
     role: 'Sales Enablement Manager',
     companyType: 'Mid-sized B2B technology company',
     teamSize: 'Approximately 150 sales representatives',
