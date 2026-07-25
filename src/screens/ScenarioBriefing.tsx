@@ -112,14 +112,14 @@ export function ScenarioBriefing({
           Start roleplay
         </button>
         <p className="text-sm text-ink-muted">
-          Rohan won&rsquo;t make this easy. He&rsquo;s sceptical of vague claims.
+          Divika won&rsquo;t make this easy. She&rsquo;s sceptical of vague claims.
         </p>
       </div>
 
       {/* Objections stay as a quiet aside — they should not be a checklist. */}
       <details className="mt-10 border-t border-line pt-6">
         <summary className="cursor-pointer text-sm font-medium text-ink-secondary hover:text-ink">
-          What he might push back on
+          What she might push back on
         </summary>
         <ul className="mt-4 space-y-2 text-sm text-ink-secondary">
           {s.possibleObjections.map((o) => (
