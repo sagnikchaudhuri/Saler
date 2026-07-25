@@ -69,7 +69,7 @@ export const SCENARIOS: ScenarioDef[] = [
     id: 'enablement-platform',
     title: 'Sales Enablement Platform',
     briefing:
-      'Rohan runs enablement for ~150 reps and relies on manager-led mock calls and inconsistent coaching.',
+      'Divika runs enablement for ~150 reps and relies on manager-led mock calls and inconsistent coaching.',
     customerRole: R.role,
     companyContext: `${R.companyType}, ${R.teamSize.toLowerCase()}`,
     sellerObjective:
@@ -82,14 +82,14 @@ export const SCENARIOS: ScenarioDef[] = [
     allowedConcerns: ['differentiation', 'adoption'],
     successCriteria: ['improve rep consistency', 'reduce coaching load'],
     defaultOpening:
-      "Hi, this is Rohan Mehta. I've got about ten minutes before my next meeting — what can I do for you?",
+      "Hi, this is Divika Mishra. I've got about ten minutes before my next meeting — what can I do for you?",
     difficulty: 'Core',
   },
   {
     id: 'security-review',
     title: 'Enterprise Security Review',
     briefing:
-      'Rohan is interested but any AI tool must clear internal IT, privacy, and security review first.',
+      'Divika is interested but any AI tool must clear internal IT, privacy, and security review first.',
     customerRole: R.role,
     companyContext: `${R.companyType}, with a formal IT and security review process`,
     sellerObjective:
@@ -102,7 +102,7 @@ export const SCENARIOS: ScenarioDef[] = [
     allowedConcerns: ['security', 'implementation'],
     successCriteria: ['secure rollout', 'gain stakeholder approval'],
     defaultOpening:
-      "Rohan Mehta here. I'll be honest — I like the idea, but anything touching our sales data has to clear security review. Where do you want to start?",
+      "Divika here. I'll be honest — I like the idea, but anything touching our sales data has to clear security review. Where do you want to start?",
     difficulty: 'Advanced',
   },
   {
@@ -122,7 +122,7 @@ export const SCENARIOS: ScenarioDef[] = [
     allowedConcerns: ['manager_time', 'adoption'],
     successCriteria: ['reduce ramp time', 'increase manager visibility'],
     defaultOpening:
-      "Hi — Rohan Mehta. We're hiring fast and my managers are drowning in coaching. Tell me why I should spend time on this.",
+      "Hi — Divika. We're hiring fast and my managers are drowning in coaching. Tell me why I should spend time on this.",
     difficulty: 'Core',
   },
   {
@@ -142,27 +142,27 @@ export const SCENARIOS: ScenarioDef[] = [
     allowedConcerns: ['roi', 'adoption'],
     successCriteria: ['improve usage', 'prove measurable value'],
     defaultOpening:
-      "Rohan Mehta. Frankly, we already pay for a tool like this and barely use it — so leadership is sceptical. Why would this be different?",
+      "Divika. Frankly, we already pay for a tool like this and barely use it — so leadership is sceptical. Why would this be different?",
     difficulty: 'Advanced',
   },
   {
     id: 'vendor-evaluation',
     title: 'Competitive Vendor Evaluation',
     briefing:
-      'Rohan is comparing several AI sales-training vendors and is sceptical of generic AI claims.',
+      'Divika is comparing several AI sales-training vendors and is sceptical of generic AI claims.',
     customerRole: R.role,
     companyContext: `${R.companyType}, evaluating multiple vendors`,
     sellerObjective:
       'Establish credible differentiation and justify a next-step evaluation.',
     immutableFacts: [
-      'Rohan is actively comparing several AI sales-training vendors.',
+      'Divika is actively comparing several AI sales-training vendors.',
       'He has heard the same generic AI pitch from multiple vendors.',
       'There are about 150 sales representatives.',
     ],
     allowedConcerns: ['differentiation', 'roi'],
     successCriteria: ['identify credible differentiation', 'justify a next-step evaluation'],
     defaultOpening:
-      "Rohan Mehta. I'm talking to a few vendors this week and you all sound the same so far. What actually makes you different?",
+      "Divika Mishra. I'm talking to a few vendors this week and you all sound the same so far. What actually makes you different?",
     difficulty: 'Advanced',
   },
 ];
