@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { guardAiRequest, checkSameOrigin } from './aiGuard';
-import { createAiRoute, createCapabilityRoute, type NodeRequestLike, type NodeResponseLike } from './nodeAdapter';
-import { createRateLimiter } from './rateLimit';
-import { signCapability } from './capability';
-import { handleAiCapability, type AiRequestLike, type JsonResult } from './ai';
-import type { LlmConfig } from './llm';
+import { guardAiRequest, checkSameOrigin } from './aiGuard.js';
+import { createAiRoute, createCapabilityRoute, type NodeRequestLike, type NodeResponseLike } from './nodeAdapter.js';
+import { createRateLimiter } from './rateLimit.js';
+import { signCapability } from './capability.js';
+import { handleAiCapability, type AiRequestLike, type JsonResult } from './ai.js';
+import type { LlmConfig } from './llm.js';
 
 const SECRET = 'guard-secret';
 
