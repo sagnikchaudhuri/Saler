@@ -119,7 +119,7 @@ describe('/api/conversation', () => {
     const r = await handleConversationRequest(post({ sellerMessage: 'hi' }), cfg(fetchImpl));
     const serialised = JSON.stringify(r.body);
     expect(serialised).not.toContain(SECRET);
-    expect(serialised).not.toMatch(/You role-play Rohan Mehta/i);
+    expect(serialised).not.toMatch(/You role-play Divika Mishra/i);
   });
 
   it('sends the key only in the Authorization header', async () => {
