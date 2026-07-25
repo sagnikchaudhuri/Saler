@@ -20,7 +20,7 @@ voice, so it cannot fail on stage.
 
 ## 0:15 — Briefing (30s)
 
-- *"This is the meeting prep. It leads with the person — Rohan Mehta, a
+- *"This is the meeting prep. It leads with the person — Divika Mishra, a
   sceptical Sales Enablement Manager — not a dashboard."*
 - Point out the **readiness row**: whether the customer is Live AI or scripted,
   whether voice input is available, and the voice-output provider.
