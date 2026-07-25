@@ -15,7 +15,7 @@ export class DemoConversationProvider implements ConversationProvider {
   constructor(private readonly delayMs = 0) {}
 
   getName(): string {
-    return 'Demo (scripted Rohan Mehta)';
+    return 'Demo (scripted Divika Mishra)';
   }
 
   isAvailable(): boolean {
