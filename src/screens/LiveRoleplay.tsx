@@ -79,7 +79,7 @@ export function LiveRoleplay({
   const objectionActive = state.objectionsRaised.length > 0;
   const momentum: Momentum = latest?.momentum ?? 'Stable';
   const feedback = latest?.briefFeedback ?? 'Open with a discovery question to get started.';
-  const nextMove = latest?.recommendedNextMove ?? 'Ask how Rohan trains new reps today.';
+  const nextMove = latest?.recommendedNextMove ?? 'Ask how Divika trains new reps.';
   const trendValues = scoreState.history.map((h) => h.visibleOverall);
 
   const ambient: AmbientState = voice?.isSpeaking
