@@ -26,7 +26,7 @@ function slowCustomer(delayMs: number): ConversationProvider {
   return {
     getName: () => 'slow-customer',
     isAvailable: () => true,
-    getOpeningLine: () => 'Hi, this is Rohan.',
+    getOpeningLine: () => 'Hi, this is Divika.',
     generateReply: async (): Promise<ProviderReply> => {
       await new Promise((r) => setTimeout(r, delayMs));
       return { message: 'A late reply that must never land after End Call.' };
