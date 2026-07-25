@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleSpeakRequest, MAX_SPEAK_TEXT_LENGTH } from './speak';
-import { createRateLimiter } from './rateLimit';
+import { handleSpeakRequest, MAX_SPEAK_TEXT_LENGTH } from './speak.js';
+import { createRateLimiter } from './rateLimit.js';
 
 const SECRET = 'sk_test_do_not_leak_me_1234567890';
 
