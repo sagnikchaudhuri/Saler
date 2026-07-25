@@ -19,7 +19,7 @@ export function pickFeedback(s: EvaluatorSignals): string {
   if (s.acknowledged_objection || s.clarified_objection) return 'Nice acknowledgement; now resolve the concern.';
   if (s.quantified_impact) return 'Great — you put a number on the pain.';
   if (s.identified_pain) return 'Good — you surfaced a real problem.';
-  if (s.referenced_customer_context) return 'Strong listening — you built on his words.';
+  if (s.referenced_customer_context) return 'Strong listening — you built on her words.';
   if (s.asked_open_question || s.explored_current_process) return 'Good discovery question.';
   if (s.proposed_next_step) return "Reasonable — just make sure you've earned the demo.";
   return 'Keep guiding the conversation forward.';
